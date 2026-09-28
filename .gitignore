@@ -1,0 +1,13 @@
+# Original retail discs and everything extracted from them.
+/media/
+*.B6I
+*.B6T
+*.iso
+*.pk4
+
+# Local builds and editor files.
+/build/
+/dist/
+*.log
+.DS_Store
+*~
