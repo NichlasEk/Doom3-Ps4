@@ -32,3 +32,9 @@ pinned Vulkan driver's triangle example; its MIT notice is retained in
 SPIR-V and adds explicit Vulkan error checks, dynamic state, pixel-test
 patterns and descriptor resources. DUDE shader source stays in the ignored
 reference clone under its upstream license; generated binaries stay ignored.
+
+The ambient-light milestone adds bounded sampled cubemaps and face uploads.
+OpenGNM's tiled coordinate calculation is patched to pass the sample count
+instead of padded image depth. The GPU fixture checks each cube face plus DUDE's
+unmodified ambient-light pair. `tests/probe_lighting.h` contains the synthetic
+lighting resources; no retail game textures are embedded.

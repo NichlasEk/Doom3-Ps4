@@ -11,8 +11,8 @@ root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
 mode = sys.argv[1] if len(sys.argv) > 1 else 'demote'
-if mode not in ('demote', 'generic'):
-    raise SystemExit('Use demote or generic')
+if mode not in ('demote', 'generic', 'cube', 'ambient'):
+    raise SystemExit('Use demote, generic, cube or ambient')
 profile = root / ('build/shader-probe-profile-'+mode)
 out = root / ('artifacts/shader-probe-'+mode)
 out.mkdir(parents=True, exist_ok=True)
@@ -54,6 +54,11 @@ with (out/'emulator.log').open('w') as log:
         for y in range(720):
             for x in range(1280):
                 expected = (26,26,51) if (x // stripe_width) % 2 else (0,255,0)
+                if mode == 'cube':
+                    colors = [(255,0,0),(0,255,0),(0,0,255),(255,255,0),(0,255,255),(255,0,255)]
+                    expected = colors[min(int((x+.5)*6/1280),5)]
+                elif mode == 'ambient':
+                    expected = (0,128,128)
                 if image.getpixel((x,y)) != expected:
                     wrong += 1
         if wrong:

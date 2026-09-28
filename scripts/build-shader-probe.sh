@@ -5,23 +5,27 @@ sdk=${OO_PS4_TOOLCHAIN:-/opt/openorbis/OpenOrbis/PS4Toolchain}
 converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
-[[ "$mode" == demote || "$mode" == generic ]] || { echo 'Use demote or generic' >&2; exit 1; }
+[[ "$mode" == demote || "$mode" == generic || "$mode" == cube || "$mode" == ambient ]] || { echo 'Use demote, generic, cube or ambient' >&2; exit 1; }
 out="$root/build/shader-probe-$mode"
 defines=()
-if [[ "$mode" == generic ]]; then defines=(-DPROBE_DUDE_GENERIC); fi
+if [[ "$mode" != demote ]]; then defines=(-DPROBE_DUDE_GENERIC); fi
+if [[ "$mode" == cube || "$mode" == ambient ]]; then defines+=(-DPROBE_LIGHTING); fi
+if [[ "$mode" == ambient ]]; then defines+=(-DPROBE_DUDE_AMBIENT); fi
 "$root/scripts/build-native-vulkan.sh"
 mkdir -p "$out"
+if [[ "$mode" != demote ]]; then python3 "$root/scripts/audit-dude-shaders.py"; fi
 for stage in vert frag; do
-  if [[ "$mode" == generic ]]; then
-    [[ "$stage" != vert ]] || python3 "$root/scripts/audit-dude-shaders.py"
-    cp "$root/build/dude-shaders/spv/generic.$stage.spv" "$out/$stage.spv"
+  if [[ "$mode" == generic || "$mode" == ambient ]]; then
+    shader=generic
+    if [[ "$mode" == ambient ]]; then shader=ambientlight; fi
+    cp "$root/build/dude-shaders/spv/$shader.$stage.spv" "$out/$stage.spv"
   else
-    glslc --target-env=vulkan1.4 "$root/tests/shaders/demote.$stage" -o "$out/$stage.spv"
+    glslc --target-env=vulkan1.4 "$root/tests/shaders/$mode.$stage" -o "$out/$stage.spv"
   fi
   spirv-val --target-env vulkan1.4 "$out/$stage.spv"
 done
 spirv-dis "$out/frag.spv" -o "$out/frag.spvasm"
-rg -q 'OpDemoteToHelperInvocation' "$out/frag.spvasm"
+if [[ "$mode" == demote || "$mode" == generic ]]; then rg -q 'OpDemoteToHelperInvocation' "$out/frag.spvasm"; fi
 python3 - "$out" "$root" "$mode" <<'PY'
 import pathlib,struct,sys
 out=pathlib.Path(sys.argv[1]); text='#include <stdint.h>\n'
@@ -30,7 +34,7 @@ for stage in ('vert','frag'):
     words=struct.unpack('<'+'I'*(len(data)//4), data)
     text+='static const uint32_t g_'+stage+'_spv[] = {'+','.join(hex(w) for w in words)+'};\n'
 (out/'probe_spirv.h').write_text(text)
-if sys.argv[3] == 'generic':
+if sys.argv[3] != 'demote':
     import re
     source=(pathlib.Path(sys.argv[2])/'.tools/dude-reference/neo/shaders/renderparms.glsl').read_text()
     offset=0; params=''

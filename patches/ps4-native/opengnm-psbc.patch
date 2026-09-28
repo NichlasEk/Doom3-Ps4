@@ -47,7 +47,7 @@ index 8c44223..0d1d405 100644
 +
 +libpsbc/psbc_compile.orbis.o: libpsbc/psbc_compile.h
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a..0e8eb2c 100644
+index bacbc6a..25e6764 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -225,6 +225,8 @@ static PsbcResult buildshaderbinary(
@@ -294,7 +294,7 @@ index bacbc6a..0e8eb2c 100644
  
  /* === Main compilation function === */
  
-+/* Standalone set-0 ABI: plain UBOs plus combined fragment sampler2D.
++/* Bounded two-set ABI: plain UBOs plus combined fragment sampler2D/cube.
 + * Descriptor arrays, other image types and unsupported operations must fail
 + * instead of accepting the upstream null-descriptor fallback as a shader.
 + */
@@ -308,7 +308,7 @@ index bacbc6a..0e8eb2c 100644
 +                if (instr->type == nir_instr_type_tex) {
 +                    nir_tex_instr *tex = nir_instr_as_tex(instr);
 +                    if (target == PSBC_TARGET_PS5 || nir->info.stage != MESA_SHADER_FRAGMENT ||
-+                        tex->sampler_dim != GLSL_SAMPLER_DIM_2D || tex->is_array || tex->is_shadow ||
++                        (tex->sampler_dim != GLSL_SAMPLER_DIM_2D && tex->sampler_dim != GLSL_SAMPLER_DIM_CUBE) || tex->is_array || tex->is_shadow ||
 +                        tex->texture_non_uniform || tex->sampler_non_uniform ||
 +                        (tex->op != nir_texop_txs && tex->dest_type != nir_type_float32) ||
 +                        (tex->op != nir_texop_tex && tex->op != nir_texop_txl && tex->op != nir_texop_txs))
@@ -425,7 +425,7 @@ index bacbc6a..0e8eb2c 100644
      switch (result) {
      case PSBC_RESULT_OK:               return "success";
      case PSBC_RESULT_INVALID_SPIRV:    return "invalid SPIR-V bytecode";
-+    case PSBC_RESULT_UNSUPPORTED_RESOURCE: return "unsupported resource layout (PS4 standalone ABI supports non-array UBOs and fragment sampler2D in sets 0-1, bindings 0-15)";
++    case PSBC_RESULT_UNSUPPORTED_RESOURCE: return "unsupported resource layout (PS4 standalone ABI supports non-array UBOs and fragment sampler2D/cube in sets 0-1, bindings 0-15)";
      case PSBC_RESULT_UNSUPPORTED_STAGE: return "unsupported shader stage";
      case PSBC_RESULT_COMPILE_NIR:      return "SPIR-V to NIR compilation failed";
      case PSBC_RESULT_COMPILE_ACO:      return "ACO shader compilation failed";

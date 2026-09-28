@@ -78,3 +78,9 @@ pixels. A separate demote/derivative/two-set probe also passes. The source audit
 compiles 127/172 DUDE graphics stages to Liverpool GCN. See the
 [shader milestone](VULKAN_UPGRADE.md#shader-and-gpu-milestone--2026-09-28).
 These graphics results are separate from engine integration and gameplay.
+
+The native graphics probe also runs DUDE's unmodified ambient-light shader pair.
+Both its expected light result and a separate six-face cubemap test match all
+921600 pixels in shadPS4. The shader audit now compiles 132/172 stages to PS4 GCN.
+The cube path is deliberately bounded to a single RGBA8 cube and mip; direct
+lighting/shadow sampling and integration into the graphical game client remain.

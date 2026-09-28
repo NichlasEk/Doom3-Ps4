@@ -40,3 +40,7 @@ in shadPS4 with an exact texture/alpha-test pixel check. Build it with
 `scripts/build-shader-probe.sh generic`, then run
 `xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py generic`.
 This validates a renderer component; the graphical game client is still pending.
+
+The same probe supports `cube` (six-face upload/sampling) and `ambient`
+(DUDE's original ambient-light shader pair). Both pass exact 1280×720 image
+checks in shadPS4. See the upgrade status for the bounded cube implementation.

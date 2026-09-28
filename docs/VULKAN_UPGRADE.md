@@ -145,3 +145,61 @@ its supported subset. The 45 rejected stages also include tessellation, BDA,
 ray-tracing and other advanced shaders. Those failures remain visible in the
 audit report. Completing the base lighting path and connecting the graphical
 engine client are the next substantial steps.
+
+## Cubemap and ambient-light milestone — 2026-09-28
+
+The next native path now executes **unmodified DUDE `ambientlight.vert` and
+`ambientlight.frag`** in shadPS4. The fixture supplies its RenderParams, tangent
+basis, normal map, diffuse texture, light falloff/projection textures and an
+ambient cubemap. With the tested parameters the expected output is `(0,128,128)`.
+Every pixel in the 1280×720 capture matches that result; guest exit is zero.
+
+A separate `cube` probe uploads six differently colored faces and samples the
+six principal directions in six screen bands. All **921600 pixels** match the
+expected face order. The order follows the
+[Khronos resource specification](https://docs.vulkan.org/spec/latest/chapters/resources.html):
++X, -X, +Y, -Y, +Z, -Z.
+
+```sh
+./scripts/build-shader-probe.sh cube
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py cube
+./scripts/build-shader-probe.sh ambient
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py ambient
+```
+
+The implementation includes:
+
+- PSBC support for non-array, non-shadow fragment cube samplers through the
+  existing per-set texture/sampler descriptor tables.
+- A bounded Vulkan cube image/view path: one square RGBA8 UNORM cube, six faces,
+  one mip, optimal tiling, sampled + transfer-destination usage, full cube view
+  with identity swizzle. Other cube shapes/usages/views are rejected.
+- Buffer-to-image upload using one face per copy region. The face index now
+  participates in tiled address calculation, including the bank rotation.
+- An OpenGNM fix: micro/macro-tiled address routines now receive the sample count
+  in their `numSamples` argument. Previously they received padded image depth.
+  This broke addressing as soon as a multi-layer context was used.
+
+The first cube test exposed both upload problems: only face zero was visible;
+linear face offsets missed the bank rotation, and the subsequent layer-aware
+address calculation exposed the wrong sample-count argument. The final test
+covers all six faces. The current fixture uses one texel per face; larger faces,
+face-edge filtering, mip chains, compressed cubes and physical PS4 rendering
+remain unverified. Cube arrays, per-face views, shadow comparisons and cube
+render targets are outside this initial implementation. The GPU fixture also
+checks explicit rejection of cube arrays and per-face 2D views.
+
+The shader audit now compiles **132/172** graphics stages to Liverpool GCN
+(172/172 valid Vulkan 1.4 SPIR-V). The five newly compiling stages are
+`ambientlight.frag`, `bumpyenvironment.frag`, `diffusecube.frag`,
+`environment.frag`, and `skybox.frag`. Only the ambient shader pair and the
+separate cube fixture were exercised on the emulator in this step.
+
+The generic GUI/alpha-test pixel probe and the ASan/UBSan driver tests are
+regression gates for this change. Results are retained under
+`artifacts/shader-probe-{cube,ambient,generic}/` and `artifacts/native/`.
+
+This establishes a standalone ambient-light pass, not engine integration or a
+lit Doom level. Direct-light `interaction.frag` still requires shadow sampling
+and additional texture operations. Full Vulkan 1.4 and the graphical engine
+client remain unfinished.

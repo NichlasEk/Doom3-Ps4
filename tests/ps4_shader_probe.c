@@ -12,7 +12,14 @@
 #include "probe_spirv.h"
 #ifdef PROBE_DUDE_GENERIC
 #include "probe_params.h"
+#ifdef PROBE_DUDE_AMBIENT
+static const float g_vertices[] = {
+ -1,-1,0,0, 0,0,1, 1,0,0, 0,1,0, 1,1,1,1,
+ 3,-1,0,0, 0,0,1, 1,0,0, 0,1,0, 1,1,1,1,
+ -1,3,0,0, 0,0,1, 1,0,0, 0,1,0, 1,1,1,1};
+#else
 static const float g_vertices[] = {-1,-1,0,0,1, 3,-1,80,0,1, -1,3,0,45,1};
+#endif
 #else
 static const float g_vertices[] = {
     -1, -1, 0,0,0, 3,-1,0,0,0, -1,3,0,0,0
@@ -20,6 +27,10 @@ static const float g_vertices[] = {
 #endif
 #define CHECK(call) do { VkResult result = (call); if (result != VK_SUCCESS) { \
     vk_ps4_log("FAIL %s: %d", #call, result); return 1; } } while (0)
+
+#ifdef PROBE_LIGHTING
+#include "probe_lighting.h"
+#endif
 
 int main(void) {
     printf("=== vulkan-ps4 PS4 Triangle Test ===\n");
@@ -253,7 +264,7 @@ int main(void) {
     vibd.stride = 5 * sizeof(float);
     vibd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    VkVertexInputAttributeDescription viads[4] = {0};
+    VkVertexInputAttributeDescription viads[6] = {0};
     viads[0].location = 0;
     viads[0].binding = 0;
     viads[0].format = VK_FORMAT_R32G32_SFLOAT;
@@ -275,6 +286,15 @@ int main(void) {
     vii.vertexAttributeDescriptionCount = 4;
 #endif
 
+#ifdef PROBE_DUDE_AMBIENT
+    vibd.stride = 17*sizeof(float);
+    const unsigned offsets[] = {0,2,4,7,10,13};
+    for (unsigned i=0;i<6;++i) {
+        viads[i].location=i; viads[i].binding=0; viads[i].offset=offsets[i]*sizeof(float);
+        viads[i].format=i<2?VK_FORMAT_R32G32_SFLOAT:(i==5?VK_FORMAT_R32G32B32A32_SFLOAT:VK_FORMAT_R32G32B32_SFLOAT);
+    }
+    vii.vertexAttributeDescriptionCount=6;
+#endif
     VkPipelineInputAssemblyStateCreateInfo iai = {0};
     iai.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     iai.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -322,6 +342,18 @@ int main(void) {
     }
     uniform_data[0][PARAM_u_alphaTest] = .5f;
     uniform_data[0][PARAM_u_alphaTest+1] = 1;
+#ifdef PROBE_LIGHTING
+    LightingResources lighting = {0};
+    uniform_data[0][PARAM_u_color] = 0;
+    for (unsigned i=0;i<3;++i) uniform_data[0][PARAM_u_diffuseModifier+i]=1;
+    uniform_data[0][PARAM_u_modelMatrixRow0]=1;
+    uniform_data[0][PARAM_u_modelMatrixRow1+1]=1;
+    uniform_data[0][PARAM_u_modelMatrixRow2+2]=1;
+    uniform_data[0][PARAM_u_lightProjectionS+3]=.5;
+    uniform_data[0][PARAM_u_lightProjectionT+3]=.5;
+    uniform_data[0][PARAM_u_lightProjectionQ+3]=1;
+    uniform_data[0][PARAM_u_lightFalloffS+3]=.5;
+#endif
     VkImage texture;
     VkDeviceMemory texture_memory;
     VkImageView texture_view;
@@ -344,6 +376,17 @@ int main(void) {
         if (i) binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 #endif
         ci.pBindings = &binding;
+#ifdef PROBE_LIGHTING
+        VkDescriptorSetLayoutBinding light_bindings[7]={0};
+        const unsigned light_binding_numbers[]={0,1,2,3,4,9,10};
+        if (i) {
+            for(unsigned b=0;b<7;++b) {
+                light_bindings[b]=binding;
+                light_bindings[b].binding=light_binding_numbers[b];
+            }
+            ci.bindingCount=7; ci.pBindings=light_bindings;
+        }
+#endif
         CHECK(vkCreateDescriptorSetLayout(dev, &ci, NULL, &set_layouts[i]));
 #ifdef PROBE_DUDE_GENERIC
         if (i) continue;
@@ -366,7 +409,7 @@ int main(void) {
         memcpy(mapped, uniform_data[i], uniform_bytes);
         vkUnmapMemory(dev, uniform_memory[i]);
     }
-    VkDescriptorPoolSize pool_sizes[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}};
+    VkDescriptorPoolSize pool_sizes[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7}};
     VkDescriptorPoolCreateInfo pool_ci = {0};
     pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_ci.maxSets = 2;
@@ -380,7 +423,7 @@ int main(void) {
     sets_ai.descriptorSetCount = 2;
     sets_ai.pSetLayouts = set_layouts;
     CHECK(vkAllocateDescriptorSets(dev, &sets_ai, sets));
-#ifdef PROBE_DUDE_GENERIC
+#if defined(PROBE_DUDE_GENERIC) && !defined(PROBE_LIGHTING)
     VkImageCreateInfo image_ci = {0};
     image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_ci.imageType = VK_IMAGE_TYPE_2D;
@@ -418,7 +461,13 @@ int main(void) {
     sampler_ci.addressModeU = sampler_ci.addressModeV = sampler_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     CHECK(vkCreateSampler(dev, &sampler_ci, NULL, &texture_sampler));
 #endif
+#ifdef PROBE_LIGHTING
+    if (setup_lighting(dev, sets[1], &lighting)) return 1;
+#endif
     for (unsigned i = 0; i < 2; ++i) {
+#ifdef PROBE_LIGHTING
+        if (i) continue;
+#endif
         VkDescriptorBufferInfo buffer = {uniform_buffers[i], 0, uniform_bytes};
         VkWriteDescriptorSet write = {0};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -426,7 +475,7 @@ int main(void) {
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         write.pBufferInfo = &buffer;
-#ifdef PROBE_DUDE_GENERIC
+#if defined(PROBE_DUDE_GENERIC) && !defined(PROBE_LIGHTING)
         VkDescriptorImageInfo image_info = {texture_sampler, texture_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         if (i) {
             write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -524,7 +573,9 @@ int main(void) {
         cmd_bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         CHECK(vkBeginCommandBuffer(cmd, &cmd_bi));
 
-#ifdef PROBE_DUDE_GENERIC
+#ifdef PROBE_LIGHTING
+        if (!frame) upload_lighting(cmd, &lighting);
+#elif defined(PROBE_DUDE_GENERIC)
         if (!frame) {
             VkImageMemoryBarrier barrier = {0};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -604,7 +655,9 @@ int main(void) {
         }
     }
     CHECK(vkQueueWaitIdle(queue));
-#ifdef PROBE_DUDE_GENERIC
+#ifdef PROBE_LIGHTING
+    vk_ps4_log_raw("PROBE CAPTURE READY: cube/ambient lighting");
+#elif defined(PROBE_DUDE_GENERIC)
     vk_ps4_log_raw("PROBE CAPTURE READY: DUDE generic texture and alpha test");
 #else
     vk_ps4_log_raw("PROBE CAPTURE READY: demote derivative and two sets");
@@ -621,7 +674,9 @@ int main(void) {
     vkDestroySemaphore(dev, render_done, NULL);
     vkDestroyCommandPool(dev, cmd_pool, NULL);
     vkDestroyPipeline(dev, pipeline, NULL);
-#ifdef PROBE_DUDE_GENERIC
+#ifdef PROBE_LIGHTING
+    destroy_lighting(dev, &lighting);
+#elif defined(PROBE_DUDE_GENERIC)
     vkDestroySampler(dev, texture_sampler, NULL);
     vkDestroyImageView(dev, texture_view, NULL);
     vkDestroyImage(dev, texture, NULL);

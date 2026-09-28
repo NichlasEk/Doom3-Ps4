@@ -38,7 +38,7 @@ index 709bb38..524cbce 100644
  	res.endptr = endptr;
  	res.cmdptr = buffer;
 diff --git a/src/gpuaddr/surface.c b/src/gpuaddr/surface.c
-index 6f3b5f2..eb98d8e 100644
+index 6f3b5f2..aac01c2 100644
 --- a/src/gpuaddr/surface.c
 +++ b/src/gpuaddr/surface.c
 @@ -1448,7 +1448,7 @@ GpaError sceGpaInitSurfaceContext(
@@ -59,6 +59,24 @@ index 6f3b5f2..eb98d8e 100644
  	    .tileinfo = tileinfo,
  
  	    .linearwidth = tp->linearwidth,
+@@ -2372,7 +2372,7 @@ GpaError sceGpaComputeSurfaceCoord(
+ 	case GNM_ARRAY_1D_TILED_THICK:
+ 		err = ComputeSurfaceAddrFromCoordMicroTiled(
+ 		    x, y, z, fragindex, ctx->bitsperelement, ctx->paddedwidth,
+-		    ctx->paddedheight, ctx->paddeddepth, arraymode,
++		    ctx->paddedheight, ctx->numfragsperpixel, arraymode,
+ 		    microTileType, isDepthSampleOrder, &addr, &bitPosition
+ 		);
+ 		break;
+@@ -2390,7 +2390,7 @@ GpaError sceGpaComputeSurfaceCoord(
+ 	case GNM_ARRAY_PRT_3D_TILED_THICK:
+ 		err = ComputeSurfaceAddrFromCoordMacroTiled(
+ 		    x, y, z, fragindex, ctx->bitsperelement, ctx->paddedwidth,
+-		    ctx->paddedheight, ctx->paddeddepth, arraymode,
++		    ctx->paddedheight, ctx->numfragsperpixel, arraymode,
+ 		    microTileType, isDepthSampleOrder, ctx->pipeswizzlemask,
+ 		    ctx->bankswizzlemask, &ctx->tileinfo, &addr, &bitPosition
+ 		);
 diff --git a/src/gpuaddr/tiler.c b/src/gpuaddr/tiler.c
 index ba494be..e88e7ca 100644
 --- a/src/gpuaddr/tiler.c
