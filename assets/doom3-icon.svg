@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+  <radialGradient id="space"><stop stop-color="#183545"/><stop offset="1" stop-color="#030609"/></radialGradient>
+  <radialGradient id="mars" cx=".28" cy=".22" r=".8"><stop stop-color="#ffd18a"/><stop offset=".3" stop-color="#d77836"/><stop offset=".64" stop-color="#76301e"/><stop offset="1" stop-color="#100b0c"/></radialGradient>
+  <linearGradient id="metal" x2="0" y2="1"><stop stop-color="#f5f6e9"/><stop offset=".36" stop-color="#9aabb0"/><stop offset=".49" stop-color="#e3e7df"/><stop offset=".51" stop-color="#44525d"/><stop offset=".79" stop-color="#909b9d"/><stop offset="1" stop-color="#f4ad60"/></linearGradient>
+  <linearGradient id="fire" x2="0" y2="1"><stop stop-color="#ffe9a9"/><stop offset=".45" stop-color="#ed9b48"/><stop offset="1" stop-color="#893216"/></linearGradient>
+  <linearGradient id="fade" x2="0" y2="1"><stop stop-color="#020306" stop-opacity="0"/><stop offset="1" stop-color="#020306"/></linearGradient>
+  <clipPath id="planet"><circle cx="256" cy="215" r="173"/></clipPath>
+  <filter id="glow" x="-.5" y="-.5" width="2" height="2"><feGaussianBlur stdDeviation="9"/></filter>
+</defs>
+<path fill="url(#space)" d="M0 0h512v512H0z"/>
+<g fill="#9cc4ce" opacity=".65"><circle cx="43" cy="79" r="1.3"/><circle cx="460" cy="66" r="1"/><circle cx="387" cy="25" r="1.5"/><circle cx="66" cy="157" r="1"/><circle cx="470" cy="213" r="1.2"/><circle cx="141" cy="36" r="1.1"/><circle cx="33" cy="302" r="1"/><circle cx="440" cy="351" r="1"/></g>
+<circle cx="256" cy="215" r="177" fill="none" stroke="#f8a14d" stroke-width="5" opacity=".4" filter="url(#glow)"/>
+<circle cx="256" cy="215" r="173" fill="url(#mars)"/>
+<g clip-path="url(#planet)" fill="none" stroke="#3e221a" opacity=".3">
+ <path stroke-width="14" d="M89 153q77-65 147-17t165-1M102 203q63-38 128-9t153 18M117 274q52-41 109-11t166 12"/>
+ <path stroke-width="5" d="M111 106l88 18 42-23 57 32 77-12M88 167l72 13 64-12 42 27 54-7 87 41"/>
+ <ellipse cx="169" cy="122" rx="24" ry="13"/><ellipse cx="324" cy="164" rx="36" ry="19"/>
+</g>
+<path fill="url(#fade)" d="M0 160h512v352H0z"/>
+<path d="M18 434h65l20-34h45l19 20h178l19-20h45l20 34h65" fill="none" stroke="#d08243" stroke-width="2" opacity=".65"/>
+<path d="M26 454h460M64 468h384" stroke="#50616a" opacity=".45"/>
+<g font-family="DejaVu Sans" font-weight="900" text-anchor="middle" stroke-linejoin="miter">
+ <text x="256" y="280" font-size="104" letter-spacing="-7" fill="#000" stroke="#000" stroke-width="16">DOOM</text>
+ <text x="256" y="274" font-size="104" letter-spacing="-7" fill="url(#metal)" stroke="#ac764a" stroke-width="2">DOOM</text>
+ <text x="256" y="398" font-size="143" fill="#000" stroke="#000" stroke-width="15">3</text>
+ <text x="256" y="390" font-size="143" fill="url(#fire)" stroke="#bcb6a2" stroke-width="2">3</text>
+</g>
+<path d="M33 34h45M33 34v45M479 34h-45M479 34v45M33 478h45M33 478v-45M479 478h-45M479 478v-45" stroke="#9aabad" opacity=".55" fill="none" stroke-width="2"/>
+</svg>

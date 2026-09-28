@@ -62,3 +62,7 @@ frames. This remains a standalone scene, separate from the Doom game client.
 and `depthregion` check D32S8 depth copies, including different-sized buffers
 and offset regions. These now pass pixel checks; scene-depth capture is enabled
 in the graphical client. See [test evidence](docs/PS4_CLIENT.md).
+
+A personal installable package with an original Mars icon is available via
+[the package workflow](docs/PS4_PACKAGE.md). It bundles explicitly supplied
+retail data and remains a finite menu test, with package/data files ignored.

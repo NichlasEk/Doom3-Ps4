@@ -14,29 +14,36 @@ import time
 root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
-profile = root/'build/client-profile'
-out = root/'artifacts/client'
+profile = Path(os.environ.get('CLIENT_PROFILE', str(root/'build/client-profile'))).resolve()
+out = Path(os.environ.get('CLIENT_ARTIFACTS', str(root/'artifacts/client'))).resolve()
+eboot = Path(os.environ.get('CLIENT_EBOOT', str(root/'build/client-runtime/eboot.bin'))).resolve(strict=True)
 data = profile/'shadPS4/data'
 data.mkdir(parents=True, exist_ok=True)
 out.mkdir(parents=True, exist_ok=True)
-assets = Path(os.environ.get('DOOM3_DATA', str(root/'media/game'))).resolve()
-if not (assets/'base/pak000.pk4').is_file():
-    raise SystemExit('Set DOOM3_DATA to the directory containing base/pak000.pk4')
-link = data/'doom3-game'
-if link.is_symlink():
-    if link.resolve() != assets:
-        raise SystemExit('Existing doom3-game symlink points to different assets')
-elif link.exists():
-    raise SystemExit('Refusing to replace existing doom3-game directory')
+if os.environ.get('CLIENT_USE_PACKAGED_DATA') == '1':
+    if (data/'doom3-game').exists() or (data/'doom3-game').is_symlink():
+        raise SystemExit('Packaged-data validation requires a profile without external doom3-game data')
+    if not (eboot.parent/'base/pak000.pk4').is_file():
+        raise SystemExit('Packaged eboot must have base/pak000.pk4 beside it')
 else:
-    link.symlink_to(assets, target_is_directory=True)
+    assets = Path(os.environ.get('DOOM3_DATA', str(root/'media/game'))).resolve()
+    if not (assets/'base/pak000.pk4').is_file():
+        raise SystemExit('Set DOOM3_DATA to the directory containing base/pak000.pk4')
+    link = data/'doom3-game'
+    if link.is_symlink():
+        if link.resolve() != assets:
+            raise SystemExit('Existing doom3-game symlink points to different assets')
+    elif link.exists():
+        raise SystemExit('Refusing to replace existing doom3-game directory')
+    else:
+        link.symlink_to(assets, target_is_directory=True)
 engine_log = data/'doom3-client/dudelog.txt'
 gpu_log = data/'client-vulkan.log'
 for path in (engine_log, gpu_log, out/'capture.png', out/'progress.png', out/'result.json'):
     path.unlink(missing_ok=True)
 emulator = os.environ.get('SHADPS4', '/home/nichlas/ScummVM-PS4/.tools/shadps4/Shadps4-sdl.AppImage')
 with (out/'emulator.log').open('w') as log:
-    proc = subprocess.Popen([emulator, '--fullscreen', 'false', str(root/'build/client-runtime/eboot.bin')],
+    proc = subprocess.Popen([emulator, '--fullscreen', 'false', str(eboot)],
         stdout=log, stderr=log, env=dict(os.environ, XDG_DATA_HOME=str(profile), SDL_VIDEODRIVER='x11'), start_new_session=True)
     captured = False
     try:
