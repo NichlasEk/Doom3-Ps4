@@ -29,3 +29,8 @@ the source-built `create-fself` from `/home/nichlas/ut99-orbis`, and shadPS4.
 `CREATE_FSELF`, `OO_PS4_TOOLCHAIN`, and `SHADPS4` can override those paths.
 The emulator runner uses its own profile under `build/` and links to local game
 data; it does not package or upload the commercial assets.
+
+The native graphics stack has its own build: `scripts/build-native-vulkan.sh`.
+Run its CPU-side driver checks with `scripts/test-vulkan-features.sh`.
+See [Vulkan upgrade status](docs/VULKAN_UPGRADE.md) for implemented features,
+validation, and remaining work toward DUDE's Vulkan 1.4 renderer.

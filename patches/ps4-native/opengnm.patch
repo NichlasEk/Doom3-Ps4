@@ -1,0 +1,148 @@
+diff --git a/docs/reference/helpers.md b/docs/reference/helpers.md
+index c880258..24b2344 100644
+--- a/docs/reference/helpers.md
++++ b/docs/reference/helpers.md
+@@ -141,7 +141,7 @@ typedef struct {
+ | `height` | `uint32_t` | Display height. |
+ | `pitch` | `uint32_t` | Display buffer pitch. |
+ | `numbuffers` | `uint32_t` | Number of allocated buffers. |
+-| `registeredbuffers` | `uint32_t` | Number of buffers registered with the kernel. |
++| `registeredbuffers` | `uint32_t` | Registered buffer attribute group plus one; zero means unregistered. |
+ | `currentbuffer` | `uint32_t` | Index of the currently displayed buffer. |
+ | `buffersize` | `uint64_t` | Size of each display buffer in bytes. |
+ | `bufferstride` | `uint64_t` | Stride of each display buffer in bytes. |
+diff --git a/include/gnm_helpers.h b/include/gnm_helpers.h
+index 7a920d7..0ff51ea 100644
+--- a/include/gnm_helpers.h
++++ b/include/gnm_helpers.h
+@@ -73,7 +73,7 @@ typedef struct {
+ 	uint32_t height;
+ 	uint32_t pitch;
+ 	uint32_t numbuffers;
+-	uint32_t registeredbuffers;
++	uint32_t registeredbuffers;  // Registered attribute group + 1, or zero.
+ 	uint32_t currentbuffer;
+ 	uint64_t buffersize;
+ 	uint64_t bufferstride;
+diff --git a/src/commandbuffer.c b/src/commandbuffer.c
+index 709bb38..524cbce 100644
+--- a/src/commandbuffer.c
++++ b/src/commandbuffer.c
+@@ -23,7 +23,7 @@ GnmCommandBuffer sceGnmCmdInit(
+ 	const uint32_t numdwords = bytesize / sizeof(uint32_t);
+ 	void* endptr = (uint8_t*)buffer + (numdwords * sizeof(uint32_t));
+ 
+-	GnmCommandBuffer res;
++	GnmCommandBuffer res = {0};
+ 	res.beginptr = buffer;
+ 	res.endptr = endptr;
+ 	res.cmdptr = buffer;
+diff --git a/src/gpuaddr/surface.c b/src/gpuaddr/surface.c
+index 6f3b5f2..eb98d8e 100644
+--- a/src/gpuaddr/surface.c
++++ b/src/gpuaddr/surface.c
+@@ -1448,7 +1448,7 @@ GpaError sceGpaInitSurfaceContext(
+ 
+ 	GpaTileInfo tileinfo = {0};
+ 	err = sceGpaGetTileInfo(
+-	    &tileinfo, tp->tilemode, tp->bitsperfrag, tp->numfragsperpixel,
++	    &tileinfo, surfinfo.tilemode, tp->bitsperfrag, tp->numfragsperpixel,
+ 	    tp->mingpumode
+ 	);
+ 	if (err != GPA_ERR_OK) {
+@@ -1457,7 +1457,7 @@ GpaError sceGpaInitSurfaceContext(
+ 
+ 	*ctx = (GpaSurfaceContext){
+ 	    .mingpumode = tp->mingpumode,
+-	    .tilemode = tp->tilemode,
++	    .tilemode = surfinfo.tilemode,
+ 	    .tileinfo = tileinfo,
+ 
+ 	    .linearwidth = tp->linearwidth,
+diff --git a/src/gpuaddr/tiler.c b/src/gpuaddr/tiler.c
+index ba494be..e88e7ca 100644
+--- a/src/gpuaddr/tiler.c
++++ b/src/gpuaddr/tiler.c
+@@ -69,12 +69,8 @@ GpaError sceGpaTpInit(
+ 	if (err != GPA_ERR_OK) {
+ 		return err;
+ 	}
+-	err = gpaAdjustTileMode(
+-	    &tp->tilemode, tp->tilemode, surfinfo.tileinfo.arraymode
+-	);
+-	if (err != GPA_ERR_OK) {
+-		return err;
+-	}
++	// Small mip levels may be downgraded from macro to micro tiling.
++	tp->tilemode = surfinfo.tilemode;
+ 
+ 	return GPA_ERR_OK;
+ }
+diff --git a/src/helpers.c b/src/helpers.c
+index 898753c..675cf4d 100644
+--- a/src/helpers.c
++++ b/src/helpers.c
+@@ -302,7 +302,9 @@ GnmError PS4_SYSV_ABI sceGnmVideoOutOpen(
+ 		sceGnmVideoOutClose(videoout);
+ 		return (GnmError)result;
+ 	}
+-	videoout->registeredbuffers = info->numbuffers;
++	/* RegisterBuffers returns an attribute group, not one ID per image.
++	 * Store group + 1 so zero still means no successful registration. */
++	videoout->registeredbuffers = (uint32_t)result + 1;
+ 
+ 	OrbisKernelEqueue queue = 0;
+ 	result = sceKernelCreateEqueue(&queue, "opengnm videoout flips");
+@@ -340,8 +342,8 @@ void PS4_SYSV_ABI sceGnmVideoOutClose(GnmVideoOut* videoout) {
+ 	}
+ #if OPENGNM_HELPERS_HAS_ORBIS_LIBKERNEL && OPENGNM_HELPERS_HAS_ORBIS_VIDEOOUT
+ 	if (videoout->handle >= 0) {
+-		for (uint32_t i = 0; i < videoout->registeredbuffers; i += 1) {
+-			sceVideoOutUnregisterBuffers(videoout->handle, (int32_t)i);
++		if (videoout->registeredbuffers) {
++			sceVideoOutUnregisterBuffers(videoout->handle, (int32_t)(videoout->registeredbuffers - 1));
+ 		}
+ 		sceVideoOutClose(videoout->handle);
+ 	}
+diff --git a/src/texture.c b/src/texture.c
+index 24c33e4..6299ba8 100644
+--- a/src/texture.c
++++ b/src/texture.c
+@@ -150,7 +150,7 @@ GnmError sceGnmCreateTexture(GnmTexture* tex, const GnmTextureCreateInfo* ci) {
+ 	    .linearwidth = ci->width,
+ 	    .linearheight = ci->height,
+ 	    .lineardepth = ci->depth,
+-	    .numfragsperpixel = 1 << ci->numfragments,
++	    .numfragsperpixel = ci->numfragments,
+ 	    .basetiledpitch = ci->pitch,
+ 
+ 	    .miplevel = 0,
+@@ -191,7 +191,7 @@ GnmError sceGnmCreateTexture(GnmTexture* tex, const GnmTextureCreateInfo* ci) {
+ 				       ? ci->numslices * 6
+ 				       : ci->numslices;
+ 	tex->basearray = 0;
+-	tex->lastarray = numslices;
++	tex->lastarray = numslices - 1;
+ 
+ 	// setMipLevelRange
+ 	tex->baselevel = 0;
+@@ -220,6 +220,9 @@ GnmError sceGnmTexCalcByteSize(
+ 		return GNM_ERROR_INVALID_ARGS;
+ 	}
+ 
++	if (outsize) *outsize = 0;
++	if (outalignment) *outalignment = 0;
++
+ 	const GpaTextureInfo texinfo = {
+ 	    .type = tex->type,
+ 	    .fmt = sceGnmTexGetFormat(tex),
+@@ -249,7 +252,8 @@ GnmError sceGnmTexCalcByteSize(
+ 	for (uint32_t i = 0; i < texinfo.nummips; i += 1) {
+ 		tp.linearwidth = umax(texinfo.width >> i, 1);
+ 		tp.linearheight = umax(texinfo.height >> i, 1);
+-		tp.lineardepth = umax(texinfo.depth >> i, 1);
++		// Array layers are accounted for by numslices below, not volume depth.
++		tp.lineardepth = texinfo.type == GNM_TEXTURE_3D ? umax(texinfo.depth >> i, 1) : 1;
+ 		tp.miplevel = i;
+ 
+ 		err = sceGpaComputeSurfaceInfo(&surfinfo, &tp);

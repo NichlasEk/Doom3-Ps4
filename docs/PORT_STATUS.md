@@ -66,3 +66,8 @@ shader translation and RHI design work. Its current Vulkan backend explicitly
 requires Vulkan 1.4, while the inspected `vulkan-ps4` driver reports Vulkan
 1.1. It is therefore a reference and possible donor for a reduced 1.1 backend,
 not a ready PS4 renderer. No DUDE code has been merged into this build.
+
+The graphics upgrade has started in an independent native stack in this project.
+[Upgrade status](VULKAN_UPGRADE.md) records the new memory-mapping entry points,
+feature negotiation, tests, and remaining Vulkan 1.4 requirements. It is not yet
+connected to the dedicated diagnostic or a graphical Doom client.
