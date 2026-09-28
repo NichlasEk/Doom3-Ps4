@@ -353,6 +353,17 @@ int main(void) {
     uniform_data[0][PARAM_u_lightProjectionT+3]=.5;
     uniform_data[0][PARAM_u_lightProjectionQ+3]=1;
     uniform_data[0][PARAM_u_lightFalloffS+3]=.5;
+#ifdef PROBE_INTERACTION
+    uniform_data[0][PARAM_u_localLightOrigin+2]=100;
+    uniform_data[0][PARAM_u_localViewOrigin+2]=100;
+#ifdef PROBE_INTERACTION_SHADOW
+    uniform_data[0][PARAM_u_shadowParms]=1;
+    uniform_data[0][PARAM_u_shadowProjectionS+3]=.5;
+    uniform_data[0][PARAM_u_shadowProjectionT+3]=.5;
+    uniform_data[0][PARAM_u_shadowProjectionQ+3]=1;
+    uniform_data[0][PARAM_u_lightFalloffS]=.5;
+#endif
+#endif
 #endif
     VkImage texture;
     VkDeviceMemory texture_memory;
@@ -377,14 +388,18 @@ int main(void) {
 #endif
         ci.pBindings = &binding;
 #ifdef PROBE_LIGHTING
-        VkDescriptorSetLayoutBinding light_bindings[7]={0};
+        VkDescriptorSetLayoutBinding light_bindings[LIGHT_IMAGES]={0};
+#ifdef PROBE_INTERACTION
+        const unsigned light_binding_numbers[]={0,1,2,3,4,5,6,7,8,9,10,11,12,13,14};
+#else
         const unsigned light_binding_numbers[]={0,1,2,3,4,9,10};
+#endif
         if (i) {
-            for(unsigned b=0;b<7;++b) {
+            for(unsigned b=0;b<LIGHT_IMAGES;++b) {
                 light_bindings[b]=binding;
                 light_bindings[b].binding=light_binding_numbers[b];
             }
-            ci.bindingCount=7; ci.pBindings=light_bindings;
+            ci.bindingCount=LIGHT_IMAGES; ci.pBindings=light_bindings;
         }
 #endif
         CHECK(vkCreateDescriptorSetLayout(dev, &ci, NULL, &set_layouts[i]));
@@ -409,7 +424,7 @@ int main(void) {
         memcpy(mapped, uniform_data[i], uniform_bytes);
         vkUnmapMemory(dev, uniform_memory[i]);
     }
-    VkDescriptorPoolSize pool_sizes[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7}};
+    VkDescriptorPoolSize pool_sizes[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 15}};
     VkDescriptorPoolCreateInfo pool_ci = {0};
     pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_ci.maxSets = 2;
@@ -428,6 +443,9 @@ int main(void) {
     image_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_ci.imageType = VK_IMAGE_TYPE_2D;
     image_ci.format = VK_FORMAT_R8G8B8A8_UNORM;
+#ifdef PROBE_SHADOW
+    image_ci.format = VK_FORMAT_D32_SFLOAT;
+#endif
     image_ci.extent = (VkExtent3D){2,1,1};
     image_ci.mipLevels = image_ci.arrayLayers = 1;
     image_ci.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -444,7 +462,11 @@ int main(void) {
     CHECK(vkBindImageMemory(dev, texture, texture_memory, 0));
     void *pixels;
     CHECK(vkMapMemory(dev, texture_memory, 0, VK_WHOLE_SIZE, 0, &pixels));
+#ifdef PROBE_SHADOW
+    const float texels[] = {.25f,.75f};
+#else
     const unsigned char texels[] = {0,255,0,255, 255,0,0,0};
+#endif
     memcpy(pixels, texels, sizeof(texels));
     vkUnmapMemory(dev, texture_memory);
     VkImageViewCreateInfo texture_vi = {0};
@@ -453,12 +475,19 @@ int main(void) {
     texture_vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
     texture_vi.format = image_ci.format;
     texture_vi.subresourceRange = (VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+#ifdef PROBE_SHADOW
+    texture_vi.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+#endif
     CHECK(vkCreateImageView(dev, &texture_vi, NULL, &texture_view));
     VkSamplerCreateInfo sampler_ci = {0};
     sampler_ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler_ci.magFilter = sampler_ci.minFilter = VK_FILTER_NEAREST;
     sampler_ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler_ci.addressModeU = sampler_ci.addressModeV = sampler_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+#ifdef PROBE_SHADOW
+    sampler_ci.compareEnable = VK_TRUE;
+    sampler_ci.compareOp = VK_COMPARE_OP_LESS;
+#endif
     CHECK(vkCreateSampler(dev, &sampler_ci, NULL, &texture_sampler));
 #endif
 #ifdef PROBE_LIGHTING

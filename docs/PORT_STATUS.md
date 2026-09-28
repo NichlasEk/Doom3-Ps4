@@ -72,15 +72,15 @@ The graphics upgrade has started in an independent native stack in this project.
 feature negotiation, tests, and remaining Vulkan 1.4 requirements. It is not yet
 connected to the dedicated diagnostic or a graphical Doom client.
 
-A standalone PS4 graphics probe now runs DUDE's unmodified generic GUI/material
-shader pair in shadPS4. Its texture/alpha-test image matches all 921600 expected
-pixels. A separate demote/derivative/two-set probe also passes. The source audit
-compiles 127/172 DUDE graphics stages to Liverpool GCN. See the
-[shader milestone](VULKAN_UPGRADE.md#shader-and-gpu-milestone--2026-09-28).
-These graphics results are separate from engine integration and gameplay.
+Standalone PS4 graphics probes now run DUDE's unmodified generic GUI/material,
+ambient-light and direct-light (`interaction`) shader pairs in shadPS4. The
+interaction pair passes both unshadowed and projected-shadow fixtures. Separate
+2D/cube depth-comparison, cube upload, texel-fetch/gradient and demote probes
+provide component checks; each passing capture checks all 921600 pixels.
 
-The native graphics probe also runs DUDE's unmodified ambient-light shader pair.
-Both its expected light result and a separate six-face cubemap test match all
-921600 pixels in shadPS4. The shader audit now compiles 132/172 stages to PS4 GCN.
-The cube path is deliberately bounded to a single RGBA8 cube and mip; direct
-lighting/shadow sampling and integration into the graphical game client remain.
+The source audit compiles **143/172** graphics stages to Liverpool GCN, with ten
+required stages covering those pairs plus zfill/shadow. Cubes remain limited to
+six faces and one mip, now RGBA8 or sampled D32; depth fixtures are uploaded or
+host-written, not rendered by a shadow-caster pass. Nearest LESS comparison is
+tested. Shadow-map rendering, filtering/mips, integration into the graphical
+game client and physical PS4 verification remain. See [Vulkan upgrade status](VULKAN_UPGRADE.md).

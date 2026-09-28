@@ -212,7 +212,7 @@ index 0000000..91cfc34
 +}
 +#endif
 diff --git a/src/vk_ps4_command.c b/src/vk_ps4_command.c
-index 168c1f3..db61cc8 100644
+index 168c1f3..f9405be 100644
 --- a/src/vk_ps4_command.c
 +++ b/src/vk_ps4_command.c
 @@ -11,15 +11,18 @@
@@ -868,7 +868,7 @@ index 168c1f3..db61cc8 100644
 +    uint32_t texel_bytes;
 +    switch (dst->create_info.format) {
 +    case VK_FORMAT_R8G8B8A8_UNORM: case VK_FORMAT_R8G8B8A8_SRGB:
-+    case VK_FORMAT_B8G8R8A8_UNORM: case VK_FORMAT_R32_SFLOAT: texel_bytes = 4; break;
++    case VK_FORMAT_B8G8R8A8_UNORM: case VK_FORMAT_R32_SFLOAT: case VK_FORMAT_D32_SFLOAT: texel_bytes = 4; break;
 +    case VK_FORMAT_R16G16B16A16_SFLOAT: texel_bytes = 8; break;
 +    case VK_FORMAT_R32G32B32A32_SFLOAT: texel_bytes = 16; break;
 +    default: texel_bytes = 0; break;
@@ -968,7 +968,7 @@ index 168c1f3..db61cc8 100644
 +        if (!mip_height) mip_height = 1;
 +        if (!width || !height || r->imageExtent.depth != 1 || r->imageOffset.z ||
 +            r->imageOffset.x < 0 || r->imageOffset.y < 0 ||
-+            r->imageSubresource.aspectMask != VK_IMAGE_ASPECT_COLOR_BIT ||
++            r->imageSubresource.aspectMask != (dst->create_info.format == VK_FORMAT_D32_SFLOAT ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT) ||
 +            r->imageSubresource.layerCount != 1 || (r->bufferOffset % texel_bytes) ||
 +            (uint64_t)r->imageOffset.x + width > mip_width ||
 +            (uint64_t)r->imageOffset.y + height > mip_height ||
@@ -2411,8 +2411,21 @@ index 24d5150..9c5fc75 100644
 +VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory2KHR(VkDevice d, const VkMemoryMapInfo *i, void **p) { return vk_ps4_MapMemory2(d, i, p); }
 +VKAPI_ATTR VkResult VKAPI_CALL vkUnmapMemory2(VkDevice d, const VkMemoryUnmapInfo *i) { return vk_ps4_UnmapMemory2(d, i); }
 +VKAPI_ATTR VkResult VKAPI_CALL vkUnmapMemory2KHR(VkDevice d, const VkMemoryUnmapInfo *i) { return vk_ps4_UnmapMemory2(d, i); }
+diff --git a/src/vk_ps4_format.c b/src/vk_ps4_format.c
+index 408e783..8523567 100644
+--- a/src/vk_ps4_format.c
++++ b/src/vk_ps4_format.c
+@@ -114,7 +114,7 @@ static const VkPs4FormatEntry g_format_table[] = {
+     /* GNM uses separate depth/stencil formats. VkFormat combined formats
+      * map to GNM depth render targets with stencil. */
+     { VK_FORMAT_D16_UNORM,          FMT(16, UNORM, X, CONSTANT0, CONSTANT0, CONSTANT1), FMT_DEPTH },
+-    { VK_FORMAT_D32_SFLOAT,         FMT(32, FLOAT, X, CONSTANT0, CONSTANT0, CONSTANT1), FMT_DEPTH },
++    { VK_FORMAT_D32_SFLOAT,         FMT(32, FLOAT, X, CONSTANT0, CONSTANT0, CONSTANT1), FMT_DEPTH | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT },
+     { VK_FORMAT_D24_UNORM_S8_UINT,  FMT(24_8, UNORM, X, CONSTANT0, CONSTANT0, CONSTANT1), FMT_DEPTH },
+     { VK_FORMAT_D32_SFLOAT_S8_UINT, FMT(32, FLOAT, X, CONSTANT0, CONSTANT0, CONSTANT1), FMT_DEPTH },
+ 
 diff --git a/src/vk_ps4_image.c b/src/vk_ps4_image.c
-index 6545469..85611b8 100644
+index 6545469..82d4ef6 100644
 --- a/src/vk_ps4_image.c
 +++ b/src/vk_ps4_image.c
 @@ -35,9 +35,28 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
@@ -2422,24 +2435,24 @@ index 6545469..85611b8 100644
 +    // Multisample storage/resolve has not been implemented by this ICD.
 +    if (pCreateInfo->samples != VK_SAMPLE_COUNT_1_BIT) return VK_ERROR_FEATURE_NOT_PRESENT;
 +    const bool cube = (pCreateInfo->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) != 0;
-+    /* Initial cube path: one sampled RGBA8 cube, six faces, one mip. */
++    /* Initial cube path: one sampled RGBA8 or D32 cube, six faces, one mip. */
 +    if (cube && (pCreateInfo->imageType != VK_IMAGE_TYPE_2D ||
 +        pCreateInfo->extent.width != pCreateInfo->extent.height ||
 +        pCreateInfo->extent.depth != 1 || pCreateInfo->arrayLayers != 6 ||
 +        pCreateInfo->mipLevels != 1 || pCreateInfo->tiling != VK_IMAGE_TILING_OPTIMAL ||
-+        pCreateInfo->format != VK_FORMAT_R8G8B8A8_UNORM ||
++        (pCreateInfo->format != VK_FORMAT_R8G8B8A8_UNORM && pCreateInfo->format != VK_FORMAT_D32_SFLOAT) ||
 +        pCreateInfo->usage != (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)))
 +        return VK_ERROR_FEATURE_NOT_PRESENT;
      VkPs4Device *dev = (VkPs4Device *)device;
      const VkAllocationCallbacks *alloc = pAllocator ? pAllocator : &dev->allocator;
  
-+    /* The current host-linear layout implementation covers a single RGBA8
++    /* The current host-linear layout implementation covers a single RGBA8/D32
 +     * surface. Reject other shapes instead of reporting a fabricated pitch. */
 +    if (pCreateInfo->tiling == VK_IMAGE_TILING_LINEAR &&
 +        (pCreateInfo->imageType != VK_IMAGE_TYPE_2D || pCreateInfo->mipLevels != 1 ||
 +         pCreateInfo->arrayLayers != 1 || pCreateInfo->samples != VK_SAMPLE_COUNT_1_BIT ||
 +         pCreateInfo->usage != VK_IMAGE_USAGE_SAMPLED_BIT ||
-+         (pCreateInfo->format != VK_FORMAT_R8G8B8A8_UNORM && pCreateInfo->format != VK_FORMAT_R8G8B8A8_SRGB)))
++         (pCreateInfo->format != VK_FORMAT_R8G8B8A8_UNORM && pCreateInfo->format != VK_FORMAT_R8G8B8A8_SRGB && pCreateInfo->format != VK_FORMAT_D32_SFLOAT)))
 +        return VK_ERROR_FEATURE_NOT_PRESENT;
      VkPs4Image *img = vk_ps4_alloc_zero(alloc, sizeof(*img), 16);
      if (!img) return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -2515,7 +2528,7 @@ index 6545469..85611b8 100644
      }
 +    if ((view->image->create_info.flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) &&
 +        (pCreateInfo->viewType != VK_IMAGE_VIEW_TYPE_CUBE ||
-+         pCreateInfo->subresourceRange.aspectMask != VK_IMAGE_ASPECT_COLOR_BIT ||
++         pCreateInfo->subresourceRange.aspectMask != (view->image->create_info.format == VK_FORMAT_D32_SFLOAT ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT) ||
 +         pCreateInfo->components.r != VK_COMPONENT_SWIZZLE_IDENTITY ||
 +         pCreateInfo->components.g != VK_COMPONENT_SWIZZLE_IDENTITY ||
 +         pCreateInfo->components.b != VK_COMPONENT_SWIZZLE_IDENTITY ||

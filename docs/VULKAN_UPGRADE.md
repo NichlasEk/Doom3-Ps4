@@ -203,3 +203,60 @@ This establishes a standalone ambient-light pass, not engine integration or a
 lit Doom level. Direct-light `interaction.frag` still requires shadow sampling
 and additional texture operations. Full Vulkan 1.4 and the graphical engine
 client remain unfinished.
+
+## Direct-light and sampled-shadow milestone — 2026-09-28
+
+DUDE's unmodified `interaction.vert`/`interaction.frag` now execute in shadPS4.
+The standalone fixture binds all fifteen set-1 texture slots, uses a constant
+normalization cube, RXGB normal map, gray diffuse map and white light projection
+and falloff. Specular contribution and advanced material effects are disabled.
+Two fixtures exercise the same original shader modules:
+
+- `interaction`: unshadowed diffuse output `(128,128,128)` everywhere.
+- `interactionshadow`: projected-shadow mode 1, a D32 map containing 0.5,
+  and a reference depth that increases horizontally. The left half is gray;
+  the right half is black. The shader executes its four comparison taps with
+  zero spread; this does not validate bilinear or wide-kernel PCF.
+
+Both check every one of 921600 pixels and exit with guest status zero.
+Separate passing pixel fixtures are:
+
+- `shadow`: two D32 texels (0.25/0.75), 16-pixel stripes, and three reference
+  values (0.125/0.5/0.875) in horizontal bands. Nearest `LESS` comparisons
+  produce green for lit pixels and red for shadowed pixels.
+- `cubeshadow`: six uploaded D32 faces alternating 0.25/0.75, six principal
+  directions and the same three reference values. All six faces are checked.
+- `texops`: integer `texelFetch`, `textureSize` and explicit `textureGrad`
+  agree on a two-texel RGBA8 image. The fixture has one mip; gradient-driven
+  mip selection and minification remain unverified.
+
+```sh
+./scripts/build-shader-probe.sh interactionshadow
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py interactionshadow
+```
+
+The compiler's resource gate now accepts float fragment shadow comparisons,
+explicit gradients and texel fetches through the existing Mesa NIR/ACO path.
+Fetches and size queries use one texture descriptor; sampled operations also
+require a sampler descriptor. Set/binding bounds and descriptor-array rejection
+remain. Vulkan image creation and upload now support sampled D32 single-mip
+cubes and host-linear sampled D32 2D images, with the depth aspect selected.
+Cube attachment usage and face views remain rejected. Comparison uses the
+existing GNM sampler mapping, following the
+[Khronos comparison rules](https://docs.vulkan.org/spec/latest/chapters/textures.html).
+
+The audit now reports **143/172** stages compiled to Liverpool GCN; all 172
+still validate as Vulkan 1.4 SPIR-V. The required compilation gate is expanded
+to ten stages: generic, zfill, shadow, ambientlight and interaction pairs.
+Success also requires every required source to be present. Other stages that
+compile are not thereby GPU-validated.
+
+Depth data in these tests is supplied by the CPU or a staging upload. This
+milestone validates the light receiver and sampling path; a shadow-caster
+render pass, depth-target-to-sampled-image synchronization/layout, larger/mipped
+shadow maps, PCF filtering and a real scene remain future work. No physical
+PS4 or graphical Doom client was tested. The driver continues to report Vulkan
+1.1; this is not complete Vulkan 1.4 support.
+
+Reproduction artifacts are in `artifacts/shader-probe-{shadow,cubeshadow,texops,interaction,interactionshadow}/`.
+The generic and ambient probes and ASan/UBSan driver checks are regression gates.

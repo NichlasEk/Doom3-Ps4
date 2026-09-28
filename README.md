@@ -44,3 +44,9 @@ This validates a renderer component; the graphical game client is still pending.
 The same probe supports `cube` (six-face upload/sampling) and `ambient`
 (DUDE's original ambient-light shader pair). Both pass exact 1280×720 image
 checks in shadPS4. See the upgrade status for the bounded cube implementation.
+
+Additional modes: `interaction` runs DUDE's original direct-light shader pair;
+`interactionshadow` enables its projected-shadow branch. `shadow`, `cubeshadow`
+and `texops` isolate depth comparisons and texture fetch/gradient operations.
+All use the same build/run commands above with the mode substituted. These are
+synthetic resource fixtures; rendering shadow maps from scene geometry remains.

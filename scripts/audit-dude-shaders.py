@@ -2,7 +2,7 @@
 """Compile DUDE graphics shaders for Vulkan 1.4, then audit Liverpool GCN support.
 
 Requires scripts/build-native-vulkan.sh. Shader sources remain in an ignored,
-pinned reference clone. The required gate is generic/zfill/shadow, six stages;
+pinned reference clone. The required gate is generic/zfill/shadow/ambientlight/interaction, ten stages;
 the report includes unsupported optional/advanced stages without hiding them.
 """
 from pathlib import Path
@@ -32,7 +32,7 @@ with (artifacts/'psbc-host-build.log').open('w') as log:
 subprocess.run([sys.executable, str(reference/'neo/shaders/compile_spv.py'),
                 '--compiler', '/usr/bin/glslc', '--out', str(out/'spv')], check=True)
 (out/'gcn').mkdir(parents=True, exist_ok=True)
-required = {name+'.'+stage for name in ('generic','zfill','shadow') for stage in ('vert','frag')}
+required = {name+'.'+stage for name in ('generic','zfill','shadow','ambientlight','interaction') for stage in ('vert','frag')}
 report = {'reference': pin, 'target': 'Liverpool PS4 base', 'gpu_test': False, 'shaders': []}
 stages = {'vert':'vertex', 'frag':'fragment', 'tesc':'tess-ctrl', 'tese':'tess-eval'}
 for source in sorted((reference/'neo/shaders').iterdir()):
@@ -55,7 +55,7 @@ for source in sorted((reference/'neo/shaders').iterdir()):
         'compiler_diagnostics': result.stdout+result.stderr})
 report['compiled'] = sum(s['gcn_compiled'] for s in report['shaders'])
 report['total'] = len(report['shaders'])
-report['required_passed'] = all(s['gcn_compiled'] for s in report['shaders'] if s['required'])
+report['required_passed'] = required <= {s['name'] for s in report['shaders'] if s['gcn_compiled']}
 (artifacts/'dude-shader-audit.json').write_text(json.dumps(report, indent=2)+'\n')
-print(f"GCN: {report['compiled']}/{report['total']}; six required stages: {report['required_passed']}")
+print(f"GCN: {report['compiled']}/{report['total']}; {len(required)} required stages: {report['required_passed']}")
 sys.exit(0 if report['required_passed'] else 1)

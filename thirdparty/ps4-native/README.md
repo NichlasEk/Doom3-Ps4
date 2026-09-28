@@ -38,3 +38,10 @@ OpenGNM's tiled coordinate calculation is patched to pass the sample count
 instead of padded image depth. The GPU fixture checks each cube face plus DUDE's
 unmodified ambient-light pair. `tests/probe_lighting.h` contains the synthetic
 lighting resources; no retail game textures are embedded.
+
+The subsequent direct-light milestone admits shadow comparisons, explicit
+texture gradients and texel fetches to the existing Mesa compiler path and adds
+sampled D32 image/upload support. DUDE's original interaction shader pair is
+pixel-tested with unshadowed and projected-shadow fixtures. Shadow maps here
+contain synthetic uploaded/host-written depths; shadow-caster rendering and
+physical PS4 output remain unverified. See `docs/VULKAN_UPGRADE.md` for limits.

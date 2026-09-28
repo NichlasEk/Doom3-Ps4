@@ -5,18 +5,27 @@ sdk=${OO_PS4_TOOLCHAIN:-/opt/openorbis/OpenOrbis/PS4Toolchain}
 converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
-[[ "$mode" == demote || "$mode" == generic || "$mode" == cube || "$mode" == ambient ]] || { echo 'Use demote, generic, cube or ambient' >&2; exit 1; }
+case "$mode" in
+  demote|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow) ;;
+  *) echo 'Use demote, generic, cube, ambient, shadow, texops, interaction, interactionshadow or cubeshadow' >&2; exit 1 ;;
+esac
 out="$root/build/shader-probe-$mode"
 defines=()
 if [[ "$mode" != demote ]]; then defines=(-DPROBE_DUDE_GENERIC); fi
-if [[ "$mode" == cube || "$mode" == ambient ]]; then defines+=(-DPROBE_LIGHTING); fi
-if [[ "$mode" == ambient ]]; then defines+=(-DPROBE_DUDE_AMBIENT); fi
+case "$mode" in
+  cube) defines+=(-DPROBE_LIGHTING) ;;
+  ambient) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT) ;;
+  interaction|interactionshadow|cubeshadow) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT -DPROBE_INTERACTION) ;;
+  shadow) defines+=(-DPROBE_SHADOW) ;;
+esac
+if [[ "$mode" == interactionshadow ]]; then defines+=(-DPROBE_INTERACTION_SHADOW); fi
 "$root/scripts/build-native-vulkan.sh"
 mkdir -p "$out"
 if [[ "$mode" != demote ]]; then python3 "$root/scripts/audit-dude-shaders.py"; fi
 for stage in vert frag; do
-  if [[ "$mode" == generic || "$mode" == ambient ]]; then
+  if [[ "$mode" == generic || "$mode" == ambient || "$mode" == interaction || "$mode" == interactionshadow ]]; then
     shader=generic
+    if [[ "$mode" == interaction || "$mode" == interactionshadow ]]; then shader=interaction; fi
     if [[ "$mode" == ambient ]]; then shader=ambientlight; fi
     cp "$root/build/dude-shaders/spv/$shader.$stage.spv" "$out/$stage.spv"
   else

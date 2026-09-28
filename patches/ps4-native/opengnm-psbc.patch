@@ -47,7 +47,7 @@ index 8c44223..0d1d405 100644
 +
 +libpsbc/psbc_compile.orbis.o: libpsbc/psbc_compile.h
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a..25e6764 100644
+index bacbc6a..a61e21a 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -225,6 +225,8 @@ static PsbcResult buildshaderbinary(
@@ -308,10 +308,10 @@ index bacbc6a..25e6764 100644
 +                if (instr->type == nir_instr_type_tex) {
 +                    nir_tex_instr *tex = nir_instr_as_tex(instr);
 +                    if (target == PSBC_TARGET_PS5 || nir->info.stage != MESA_SHADER_FRAGMENT ||
-+                        (tex->sampler_dim != GLSL_SAMPLER_DIM_2D && tex->sampler_dim != GLSL_SAMPLER_DIM_CUBE) || tex->is_array || tex->is_shadow ||
++                        (tex->sampler_dim != GLSL_SAMPLER_DIM_2D && tex->sampler_dim != GLSL_SAMPLER_DIM_CUBE) || tex->is_array ||
 +                        tex->texture_non_uniform || tex->sampler_non_uniform ||
 +                        (tex->op != nir_texop_txs && tex->dest_type != nir_type_float32) ||
-+                        (tex->op != nir_texop_tex && tex->op != nir_texop_txl && tex->op != nir_texop_txs))
++                        (tex->op != nir_texop_tex && tex->op != nir_texop_txl && tex->op != nir_texop_txs && tex->op != nir_texop_txd && tex->op != nir_texop_txf))
 +                        return false;
 +                    unsigned descriptors = 0;
 +                    for (unsigned i = 0; i < tex->num_srcs; ++i) {
@@ -330,7 +330,7 @@ index bacbc6a..25e6764 100644
 +                            return false;
 +                        ++descriptors;
 +                    }
-+                    if (descriptors != (tex->op == nir_texop_txs ? 1 : 2))
++                    if (descriptors != ((tex->op == nir_texop_txs || tex->op == nir_texop_txf) ? 1 : 2))
 +                        return false;
 +                }
 +                if (instr->type != nir_instr_type_intrinsic)
