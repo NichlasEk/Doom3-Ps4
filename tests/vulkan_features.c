@@ -115,6 +115,24 @@ int main(void) {
     unmap.flags = VK_MEMORY_UNMAP_RESERVE_BIT_EXT;
     assert(vkUnmapMemory2KHR(VK_NULL_HANDLE, &unmap) == VK_ERROR_MEMORY_MAP_FAILED);
     puts("PASS: map-memory2 core/KHR entry points, offsets, whole size, overflow checks, placed mapping rejected");
+    VkPs4CommandBuffer command = {0};
+    VkPs4DescriptorSet set0 = {0}, set1 = {0};
+    VkDescriptorSet bound[2] = {(VkDescriptorSet)&set0, (VkDescriptorSet)&set1};
+    vk_ps4_CmdBindDescriptorSets((VkCommandBuffer)&command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        VK_NULL_HANDLE, 0, 1, &bound[0], 0, NULL);
+    vk_ps4_CmdBindDescriptorSets((VkCommandBuffer)&command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        VK_NULL_HANDLE, 1, 1, &bound[1], 0, NULL);
+    assert(command.resource_error == VK_SUCCESS);
+    assert(command.graphics_sets[0] == &set0 && command.graphics_sets[1] == &set1);
+    vk_ps4_CmdBindDescriptorSets((VkCommandBuffer)&command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        VK_NULL_HANDLE, UINT32_MAX, 1, bound, 0, NULL);
+    assert(command.resource_error == VK_ERROR_FEATURE_NOT_PRESENT);
+    assert(command.graphics_sets[0] == &set0 && command.graphics_sets[1] == &set1);
+    command.resource_error = VK_SUCCESS;
+    vk_ps4_CmdBindDescriptorSets((VkCommandBuffer)&command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        VK_NULL_HANDLE, 1, 2, bound, 0, NULL);
+    assert(command.resource_error == VK_ERROR_FEATURE_NOT_PRESENT);
+    puts("PASS: independent descriptor-set binding and out-of-range rejection");
     uint32_t version = 0;
     assert(vk_ps4_EnumerateInstanceVersion(&version) == VK_SUCCESS);
     assert(version == VK_API_VERSION_1_1);

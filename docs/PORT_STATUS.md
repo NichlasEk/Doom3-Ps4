@@ -71,3 +71,10 @@ The graphics upgrade has started in an independent native stack in this project.
 [Upgrade status](VULKAN_UPGRADE.md) records the new memory-mapping entry points,
 feature negotiation, tests, and remaining Vulkan 1.4 requirements. It is not yet
 connected to the dedicated diagnostic or a graphical Doom client.
+
+A standalone PS4 graphics probe now runs DUDE's unmodified generic GUI/material
+shader pair in shadPS4. Its texture/alpha-test image matches all 921600 expected
+pixels. A separate demote/derivative/two-set probe also passes. The source audit
+compiles 127/172 DUDE graphics stages to Liverpool GCN. See the
+[shader milestone](VULKAN_UPGRADE.md#shader-and-gpu-milestone--2026-09-28).
+These graphics results are separate from engine integration and gameplay.

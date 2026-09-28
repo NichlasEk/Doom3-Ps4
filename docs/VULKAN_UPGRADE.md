@@ -65,3 +65,83 @@ is the checklist source for the broader upgrade. Dynamic rendering, synchronizat
 maintenance functionality, shader/storage features, feature/property reporting,
 and required limits still need implementation review and tests. Available
 function names alone are not evidence of correct GPU behavior.
+
+## Shader and GPU milestone — 2026-09-28
+
+The next implementation step is complete:
+
+- The bounded descriptor ABI now accepts **sets 0 and 1**, each with bindings
+  0–15 and the previously supported UBO / fragment sampler2D resource types.
+  PSBC emits one GNM input-usage slot per used descriptor set, with its set index
+  in `apislot`. The driver binds the corresponding resource-table pointer for
+  each shader stage. Layout validation uses separate masks for each set.
+- Pipeline layouts accept two sets; separate `firstSet=0` and `firstSet=1` binds
+  preserve each other's state. Command-buffer reset clears both bindings.
+- Push-constant snapshots remain attached to set 0. This is a bounded graphics
+  implementation, not support for arbitrary sets, descriptor arrays, dynamic
+  descriptor offsets, or full Vulkan pipeline-layout compatibility validation.
+- Renderpass color clears now handle VideoOut-backed swapchain images, which
+  have no `VkDeviceMemory` wrapper. Previously the clear silently returned.
+
+### Shader audit
+
+`python3 scripts/audit-dude-shaders.py` builds the host PSBC compiler and audits
+all graphics stages from the pinned DUDE reference. **172/172** compile and
+validate as Vulkan 1.4 SPIR-V; **127/172** compile to Liverpool GCN binaries.
+All six required `generic`, `zfill`, and `shadow` vertex/fragment stages pass.
+The script's success means those six pass, not that all 172 are supported.
+
+Detailed per-shader results, hashes and compiler diagnostics are in
+`artifacts/native/dude-shader-audit.json`. Native binaries and individual logs
+are in `build/dude-shaders/gcn`. PSBC's existing SPIR-V capability warnings are
+retained in the logs; a compiler return code is not a general support claim.
+
+### Actual emulator rendering
+
+```sh
+./scripts/build-shader-probe.sh demote
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py demote
+./scripts/build-shader-probe.sh generic
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py generic
+./scripts/test-vulkan-features.sh
+```
+
+Both probes cross-compile and run as native PS4 executables in shadPS4 v0.18.0,
+revision `e3ce810f3a653f43ac64ebab63023de281a4103a`. The runner compares **every
+pixel of the 1280×720 capture** with the expected image and requires guest exit 0.
+Both passed with **921600 checked pixels, zero mismatches**:
+
+- `demote`: Vulkan 1.4 SPIR-V, verified `OpDemoteToHelperInvocation`; odd pixel
+  columns preserve the clear color and even columns are green only if `dFdx`
+  still returns the expected derivative. Both descriptor sets are read in the
+  fragment shader; set 0 is also read in the vertex shader.
+- `generic`: **unmodified DUDE `generic.vert` and `generic.frag`**, using the
+  upstream prelude/includes. A generated RenderParams block goes in set 0;
+  a two-texel RGBA texture and nearest sampler go in set 1. Opaque green and
+  transparent red texels produce alternating 16-pixel green/background stripes.
+  This verifies real DUDE shader execution, texture sampling and alpha discard.
+
+Captures and run results are under `artifacts/shader-probe-{demote,generic}/`.
+The shader probe uses dynamic viewport/scissor state: the upstream sample's
+static state was not emitted by the driver and initially produced a black
+screen. The probe now declares and sets the dynamic states explicitly.
+
+The ASan/UBSan host test also passed independent descriptor binding and rejected
+out-of-range set updates without altering existing bindings.
+
+### What this does not yet establish
+
+The probe is a standalone graphics executable. The Doom engine still has its
+dedicated diagnostic; no game menu, level or lighting is connected to this
+renderer yet. Physical PS4 behavior is untested. The driver continues to report
+API 1.1 and does not advertise demote as generally supported: the tested shader
+paths do not cover all helper-invocation semantics and storage side effects.
+See the [Khronos demote specification](https://github.com/KhronosGroup/SPIRV-Registry/blob/main/extensions/EXT/SPV_EXT_demote_to_helper_invocation.asciidoc)
+for the full requirements.
+
+The next blockers include `interaction.frag` and `ambientlight.frag`: the
+current compiler path rejects cube/shadow sampling and texture operations beyond
+its supported subset. The 45 rejected stages also include tessellation, BDA,
+ray-tracing and other advanced shaders. Those failures remain visible in the
+audit report. Completing the base lighting path and connecting the graphical
+engine client are the next substantial steps.

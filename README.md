@@ -34,3 +34,9 @@ The native graphics stack has its own build: `scripts/build-native-vulkan.sh`.
 Run its CPU-side driver checks with `scripts/test-vulkan-features.sh`.
 See [Vulkan upgrade status](docs/VULKAN_UPGRADE.md) for implemented features,
 validation, and remaining work toward DUDE's Vulkan 1.4 renderer.
+
+A standalone shader probe now renders DUDE's real generic GUI/material shaders
+in shadPS4 with an exact texture/alpha-test pixel check. Build it with
+`scripts/build-shader-probe.sh generic`, then run
+`xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py generic`.
+This validates a renderer component; the graphical game client is still pending.

@@ -24,3 +24,11 @@ and builds OpenGNM, PSBC and the Vulkan driver under ignored `build/native/`.
 Logs and archive hashes are under ignored `artifacts/native/`. No binaries or
 commercial Doom data are committed. The graphics stack is not yet linked to
 the Doom engine diagnostic.
+
+The shader milestone extends PSBC and the driver to two descriptor sets and
+fixes swapchain renderpass clears. `tests/ps4_shader_probe.c` is derived from the
+pinned Vulkan driver's triangle example; its MIT notice is retained in
+[LICENSE.vulkan-ps4](LICENSE.vulkan-ps4). The modified example uses generated
+SPIR-V and adds explicit Vulkan error checks, dynamic state, pixel-test
+patterns and descriptor resources. DUDE shader source stays in the ignored
+reference clone under its upstream license; generated binaries stay ignored.
