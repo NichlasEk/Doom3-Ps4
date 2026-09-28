@@ -1,0 +1,359 @@
+diff --git a/neo/CMakeLists.txt b/neo/CMakeLists.txt
+index 98972d8..61e18b3 100644
+--- a/neo/CMakeLists.txt
++++ b/neo/CMakeLists.txt
+@@ -1,6 +1,10 @@
+ cmake_minimum_required(VERSION 2.6...3.22 FATAL_ERROR)
+ project(dhewm3)
+ 
++if(DHEWM3_PS4_BRINGUP)
++	add_definitions(-DDHEWM3_PS4_BRINGUP)
++endif()
++
+ # TODO
+ 
+ # osx: place game .dylib's in the bundle (next to the binary)
+@@ -194,8 +198,13 @@ if(CMAKE_MAJOR_VERSION LESS 3 OR ( CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_V
+ endif()
+ 
+ # libs
+-find_package(OpenAL REQUIRED)
+-include_directories(${OPENAL_INCLUDE_DIR})
++if(CORE)
++	find_package(OpenAL REQUIRED)
++	include_directories(${OPENAL_INCLUDE_DIR})
++elseif(DHEWM3_PS4)
++	# Dedicated uses OpenAL API types in shared sound code, but links stubs.
++	include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/openal-headers")
++endif()
+ 
+ if (SDL3)
+ 	if(SDL2)
+@@ -503,7 +512,7 @@ if(D3_COMPILER_IS_GCC_OR_CLANG)
+ 		set(ldflags "${ldflags} -static-libgcc -static-libstdc++ -Wl,--stack,8388608")
+ 	elseif(os STREQUAL "linux")
+ 		set(sys_libs ${sys_libs} dl)
+-	elseif(os STREQUAL "freebsd")
++	elseif(os STREQUAL "freebsd" AND NOT DHEWM3_PS4)
+ 		find_library(EXECINFO_LIBRARIES execinfo /usr/lib /usr/local/lib)
+ 		set(sys_libs ${sys_libs} ${EXECINFO_LIBRARIES})
+ 	endif()
+diff --git a/neo/framework/Common.cpp b/neo/framework/Common.cpp
+index dbf6c54..29c2712 100644
+--- a/neo/framework/Common.cpp
++++ b/neo/framework/Common.cpp
+@@ -2491,6 +2491,10 @@ idCommonLocal::Frame
+ */
+ void idCommonLocal::Frame( void ) {
+ 	D3P_ScopedCPUSample(Common_Frame);
++	#ifdef DHEWM3_PS4_BRINGUP
++	static bool firstDiagnosticFrame = true;
++	if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: entering Common::Frame\n");
++	#endif
+ 	try {
+ 		// DG: update tic number here for ticNumAtStart (used below to decide whether to sleep before next frame)
+ 		Com_UpdateTicNumber();
+@@ -2498,6 +2502,9 @@ void idCommonLocal::Frame( void ) {
+ 
+ 		// pump all the events
+ 		Sys_GenerateEvents();
++		#ifdef DHEWM3_PS4_BRINGUP
++		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: events generated\n");
++		#endif
+ 
+ 		// write config file if anything changed
+ 		WriteConfiguration();
+@@ -2516,13 +2523,24 @@ void idCommonLocal::Frame( void ) {
+ 		}
+ 
+ 		eventLoop->RunEventLoop();
++		#ifdef DHEWM3_PS4_BRINGUP
++		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: event loop complete\n");
++		#endif
+ 
+ 		// DG: prepare new ImGui frame - I guess this is a good place, as all new events should be available?
+ 		D3::ImGuiHooks::NewFrame();
+ 
+ 		Com_UpdateFrameTime(); // DG: put updating com_frameTime into a function
++		#ifdef DHEWM3_PS4_BRINGUP
++		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: frame time updated\n");
++		#endif
+ 
++		#ifndef DHEWM3_PS4_BRINGUP
+ 		idAsyncNetwork::RunFrame();
++		#endif
++		#ifdef DHEWM3_PS4_BRINGUP
++		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: network frame complete\n");
++		#endif
+ 
+ 		if ( idAsyncNetwork::IsActive() ) {
+ 			if ( idAsyncNetwork::serverDedicated.GetInteger() != 1 ) {
+@@ -2530,10 +2548,19 @@ void idCommonLocal::Frame( void ) {
+ 				session->UpdateScreen( false );
+ 			}
+ 		} else {
++			#ifdef DHEWM3_PS4_BRINGUP
++			if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: session frame begin\n");
++			#endif
+ 			session->Frame();
++			#ifdef DHEWM3_PS4_BRINGUP
++			if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: session frame end\n");
++			#endif
+ 
+ 			// normal, in-sequence screen update
+ 			session->UpdateScreen( false );
++			#ifdef DHEWM3_PS4_BRINGUP
++			if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: screen update complete\n");
++			#endif
+ 		}
+ 
+ 		// report timing information
+@@ -2548,6 +2575,9 @@ void idCommonLocal::Frame( void ) {
+ 		}
+ 
+ 		com_frameNumber++;
++		#ifdef DHEWM3_PS4_BRINGUP
++		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: frame logic complete\n");
++		#endif
+ 
+ 		// set idLib frame number for frame based memory dumps
+ 		idLib::frameNumber = com_frameNumber;
+@@ -2576,6 +2606,9 @@ void idCommonLocal::Frame( void ) {
+ 		}
+ 
+ 		D3P_FRAMEMARK // tell profiler (tracy) that this is the end of a frame
++		#ifdef DHEWM3_PS4_BRINGUP
++		firstDiagnosticFrame = false;
++		#endif
+ 	}
+ 
+ 	catch( idException & ) {
+@@ -3004,7 +3037,7 @@ void idCommonLocal::Init( int argc, char **argv ) {
+ 		exit(1);
+ 	}
+ 
+-#ifdef ID_DEDICATED
++#if defined(ID_DEDICATED) && !defined(__PS4__)
+ 	// we want to use the SDL event queue for dedicated servers. That
+ 	// requires video to be initialized, so we just use the dummy
+ 	// driver for headless boxen
+@@ -3018,6 +3051,11 @@ void idCommonLocal::Init( int argc, char **argv ) {
+ #endif
+ #endif
+ 
++#if defined(ID_DEDICATED) && defined(__PS4__)
++	if (SDL_Init(0) != 0) {
++		Sys_Error("Error while initializing SDL: %s", SDL_GetError());
++	}
++#else
+ #if SDL_VERSION_ATLEAST(3, 0, 0)
+ 	if ( ! SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD) )
+ 	{
+@@ -3038,6 +3076,7 @@ void idCommonLocal::Init( int argc, char **argv ) {
+ 			Sys_Error("Error while initializing SDL: %s", SDL_GetError());
+ 		}
+ 	}
++#endif
+ 
+ 	Sys_InitThreads();
+ 
+@@ -3176,7 +3215,9 @@ void idCommonLocal::Init( int argc, char **argv ) {
+ 	}
+ 
+ 	runAsyncThread = true;
++	#ifndef DHEWM3_PS4_BRINGUP
+ 	Sys_CreateThread( AsyncThread, this, asyncThread, "AsyncThread" );
++	#endif
+ }
+ 
+ 
+diff --git a/neo/framework/FileSystem.cpp b/neo/framework/FileSystem.cpp
+index 7edeb4d..51994c1 100644
+--- a/neo/framework/FileSystem.cpp
++++ b/neo/framework/FileSystem.cpp
+@@ -3555,6 +3555,10 @@ idFileSystemLocal::StartBackgroundReadThread
+ =================
+ */
+ void idFileSystemLocal::StartBackgroundDownloadThread() {
++	#ifdef DHEWM3_PS4_BRINGUP
++	// No asynchronous downloads in the local-data diagnostic.
++	return;
++	#endif
+ 	if ( !backgroundThread.threadHandle ) {
+ 		Sys_CreateThread( BackgroundDownloadThread, &backgroundThread_exit, backgroundThread, "backgroundDownload" );
+ 	} else {
+diff --git a/neo/renderer/Model_md3.cpp b/neo/renderer/Model_md3.cpp
+index 1d6f481..28a7dab 100644
+--- a/neo/renderer/Model_md3.cpp
++++ b/neo/renderer/Model_md3.cpp
+@@ -58,7 +58,7 @@ idRenderModelMD3::~idRenderModelMD3() {
+ 		R_FreeStaticTriSurfSilIndexes( &tri );
+ 		R_FreeStaticTriSurfSilEdges( &tri );
+ 
+-		if ( sizeof(md3Triangle_t::indexes[0]) != sizeof(silInfo.indexes[0]) ) {
++		if ( sizeof(((md3Triangle_t *)0)->indexes[0]) != sizeof(silInfo.indexes[0]) ) {
+ 			tri.indexes = silInfo.indexes;
+ 			R_FreeStaticTriSurfIndexes( &tri );
+ 		} // else silInfos[i].indexes points directly into the corresponding data in this->md3
+diff --git a/neo/sys/linux/main.cpp b/neo/sys/linux/main.cpp
+index 3468d39..5cd8433 100644
+--- a/neo/sys/linux/main.cpp
++++ b/neo/sys/linux/main.cpp
+@@ -87,11 +87,15 @@ const char* Posix_GetSavePath()
+ 
+ static void SetSavePath()
+ {
++	#ifdef __PS4__
++	D3_snprintfC99(save_path, sizeof(save_path), "/data/doom3-ps4");
++	#else
+ 	const char* s = getenv("XDG_DATA_HOME");
+ 	if (s)
+ 		D3_snprintfC99(save_path, sizeof(save_path), "%s/dhewm3", s);
+ 	else
+ 		D3_snprintfC99(save_path, sizeof(save_path), "%s/.local/share/dhewm3", getenv("HOME"));
++	#endif
+ }
+ 
+ const char* Posix_GetExePath()
+@@ -103,7 +107,9 @@ static void SetExecutablePath(char* exePath)
+ {
+ 	// !!! this assumes that exePath can hold PATH_MAX chars !!!
+ 
+-#ifdef _WIN32
++#ifdef __PS4__
++	D3_snprintfC99(exePath, PATH_MAX, "/app0/eboot.bin");
++#elif defined(_WIN32)
+ 	WCHAR wexePath[PATH_MAX];
+ 	DWORD len;
+ 
+@@ -193,6 +199,12 @@ bool Sys_GetPath(sysPath_t type, idStr &path) {
+ 
+ 	switch(type) {
+ 	case PATH_BASE:
++		#ifdef __PS4__
++		if (stat("/data/doom3-game/base", &st) != -1 && S_ISDIR(st.st_mode)) {
++			path = "/data/doom3-game";
++			return true;
++		}
++		#endif
+ 		if (stat(BUILD_DATADIR, &st) != -1 && S_ISDIR(st.st_mode)) {
+ 			path = BUILD_DATADIR;
+ 			return true;
+@@ -230,6 +242,10 @@ bool Sys_GetPath(sysPath_t type, idStr &path) {
+ 		return false;
+ 
+ 	case PATH_CONFIG:
++		#ifdef __PS4__
++		path = "/data/doom3-ps4/config";
++		return true;
++		#else
+ 		s = getenv("XDG_CONFIG_HOME");
+ 		if (s)
+ 			idStr::snPrintf(buf, sizeof(buf), "%s/dhewm3", s);
+@@ -238,6 +254,7 @@ bool Sys_GetPath(sysPath_t type, idStr &path) {
+ 
+ 		path = buf;
+ 		return true;
++		#endif
+ 
+ 	case PATH_SAVE:
+ 		if(save_path[0] != '\0') {
+@@ -448,6 +465,18 @@ int main(int argc, char **argv) {
+ 		common->Init( 0, NULL );
+ 	}
+ 
++	#ifdef DHEWM3_PS4_BRINGUP
++	Sys_Printf("PASS PS4 dedicated initialization\n");
++	for (int frame = 0; frame < 60; ++frame) {
++		if (frame == 0) Sys_Printf("PS4 diagnostic: first frame begin\n");
++		common->Frame();
++		if (frame == 0) Sys_Printf("PS4 diagnostic: first frame end\n");
++	}
++	Sys_Printf("PASS PS4 dedicated 60 frames\n");
++	common->Shutdown();
++	return 0;
++	#endif
++
+ 	while (1) {
+ 		common->Frame();
+ 	}
+diff --git a/neo/sys/posix/posix_main.cpp b/neo/sys/posix/posix_main.cpp
+index bb0232b..360a4dc 100644
+--- a/neo/sys/posix/posix_main.cpp
++++ b/neo/sys/posix/posix_main.cpp
+@@ -597,7 +597,7 @@ void Sys_SleepUntilPrecise( double targetTimeMS ) {
+ static const int   crashSigs[]     = {  SIGILL,   SIGABRT,   SIGFPE,   SIGSEGV };
+ static const char* crashSigNames[] = { "SIGILL", "SIGABRT", "SIGFPE", "SIGSEGV" };
+ 
+-#if ( defined(__linux__) && defined(__GLIBC__) ) || defined(__FreeBSD__) || (defined(__APPLE__) && !defined(OSX_TIGER))
++#if !defined(__PS4__) && (( defined(__linux__) && defined(__GLIBC__) ) || defined(__FreeBSD__) || (defined(__APPLE__) && !defined(OSX_TIGER)))
+   #define D3_HAVE_BACKTRACE
+   #include <execinfo.h>
+ #endif
+@@ -814,6 +814,7 @@ void Posix_InitSignalHandlers( void )
+ 	bt_state = backtrace_create_state(exePath[0] ? exePath : NULL, 0, bt_error_callback, NULL);
+ #endif
+ 
++	#ifndef __PS4__
+ 	for(int i=0; i<sizeof(crashSigs)/sizeof(crashSigs[0]); ++i)
+ 	{
+ 		installSigHandler(crashSigs[i], SA_RESTART|SA_RESETHAND, signalhandlerCrash);
+@@ -821,6 +822,7 @@ void Posix_InitSignalHandlers( void )
+ 
+ 	installSigHandler(SIGTTIN, 0, signalhandlerConsoleStuff);
+ 	installSigHandler(SIGTTOU, 0, signalhandlerConsoleStuff);
++	#endif
+ 
+ 	// this is also a good place to open dhewm3log.txt for Sys_VPrintf()
+ 
+@@ -1040,6 +1042,9 @@ Return NULL if a complete line is not ready.
+ ================
+ */
+ char *Sys_ConsoleInput( void ) {
++	#ifdef __PS4__
++	return NULL;
++	#endif
+ 	if ( tty_enabled ) {
+ 		int	key;
+ 		bool	hidden = false;
+diff --git a/neo/sys/posix/posix_net.cpp b/neo/sys/posix/posix_net.cpp
+index 746a945..8ab35a6 100644
+--- a/neo/sys/posix/posix_net.cpp
++++ b/neo/sys/posix/posix_net.cpp
+@@ -272,6 +272,14 @@ NET_InitNetworking
+ */
+ void Sys_InitNetworking(void)
+ {
++	#ifdef __PS4__
++	// Keep local address tests deterministic until SceNet interface discovery
++	// is implemented. The current single-player bring-up never opens a socket.
++	num_interfaces = 1;
++	netint[0].ip = INADDR_LOOPBACK;
++	netint[0].mask = 0xff000000;
++	return;
++	#endif
+ 	unsigned int ip, mask;
+ 	struct ifaddrs *ifap, *ifp;
+ 
+@@ -341,12 +349,21 @@ static int IPSocket( const char *net_interface, int port, netadr_t *bound_to = N
+ 		return 0;
+ 	}
+ 	// make it non-blocking
++	#ifdef __PS4__
++	int flags = fcntl( newsocket, F_GETFL, 0 );
++	if ( flags == -1 || fcntl( newsocket, F_SETFL, flags | O_NONBLOCK ) == -1 ) {
++		common->Printf( "ERROR: IPSocket: fcntl O_NONBLOCK:%s\n", strerror( errno ) );
++		close( newsocket );
++		return 0;
++	}
++	#else
+ 	int on = 1;
+ 	if ( ioctl( newsocket, FIONBIO, &on ) == -1 ) {
+ 		common->Printf( "ERROR: IPSocket: ioctl FIONBIO:%s\n",
+ 				   strerror( errno ) );
+ 		return 0;
+ 	}
++	#endif
+ 	// make it broadcast capable
+ 	if ( setsockopt( newsocket, SOL_SOCKET, SO_BROADCAST, (char *) &i, sizeof(i) ) == -1 ) {
+ 		common->Printf( "ERROR: IPSocket: setsockopt SO_BROADCAST:%s\n", strerror( errno ) );

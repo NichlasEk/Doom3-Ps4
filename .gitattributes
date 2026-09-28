@@ -1,0 +1,3 @@
+# Preserve upstream patch context and public-domain API headers verbatim.
+patches/*.patch -whitespace
+thirdparty/openal-headers/AL/*.h -whitespace
