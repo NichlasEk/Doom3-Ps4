@@ -260,3 +260,56 @@ PS4 or graphical Doom client was tested. The driver continues to report Vulkan
 
 Reproduction artifacts are in `artifacts/shader-probe-{shadow,cubeshadow,texops,interaction,interactionshadow}/`.
 The generic and ambient probes and ASan/UBSan driver checks are regression gates.
+
+## Geometry-produced shadow map milestone — 2026-09-28
+
+The `shadowcast` probe now renders a **128×64 D32 depth attachment from actual
+triangle geometry**, then samples that same attachment in DUDE's unchanged
+`interaction.vert`/`interaction.frag`. No CPU depth upload supplies this map.
+
+The caster draws a near quad at depth 0.25 followed by an overlapping far quad
+at depth 0.75 with depth test/write enabled and `LESS`. The light pass compares
+against 0.5, so accepting the far quad incorrectly would erase the shadow.
+The attachment clears to 1.0 before each of six frames. Alternating viewport
+positions move the projected quad; the last capture also checks that the
+previous frame's rectangle has been cleared. An unrelated 1×1 viewport is set
+before beginning the depth pass, verifying that the load-op clear does not
+inherit that dynamic drawing state.
+
+All **921600 pixels** match the final expected image: a black rectangle at
+`480 <= x < 1120`, `180 <= y < 540`, surrounded by `(128,128,128)` lighting.
+Guest exit is zero. This is an emulator check of geometry, depth testing,
+clearing, reuse, synchronization and sampling together.
+
+Two defects in the inherited image path were fixed:
+
+- A depth target's texture descriptor used a display/color tile mode instead
+  of the actual depth target's tile mode and padded pitch.
+- Binding depth memory set DB addresses but left the sampled texture's base
+  address unset.
+
+Depth creation now reports allocation failure if GNM target creation fails,
+instead of silently replacing it with a texture. Combined sampled/depth
+attachments are bounded to optimal-tiled, single-layer, single-mip D32 2D
+images with full identity depth views. The fixture checks rejection of D16,
+multiple layers/mips and a color-aspect view. HTILE compression is disabled.
+The existing conservative command-buffer barrier flushes/waits for depth
+writes before fragment texture reads; the fixture uses the early/late fragment
+test stages, depth-write access and a transition to shader-read layout,
+following the [Khronos synchronization example](https://docs.vulkan.org/guide/latest/synchronization_examples.html).
+
+```sh
+./scripts/build-shader-probe.sh shadowcast
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py shadowcast
+```
+
+Artifacts: `artifacts/shader-probe-shadowcast/{capture.png,result.json,emulator.log}`.
+The sampled-depth `interactionshadow` and generic GUI probes, plus ASan/UBSan
+CPU driver tests, are regression gates. The shader audit remains 143/172 with
+all ten required stages passing.
+
+This is a small synthetic geometric scene with custom caster shaders and the
+original DUDE light receiver. It does not yet load a Doom level or integrate
+the graphical client. Cube shadow attachments, compressed depth, larger scene
+workloads, filtered PCF and physical PS4 rendering remain unverified or
+unsupported. Vulkan 1.4 support remains incomplete.

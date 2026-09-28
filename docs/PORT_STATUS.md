@@ -80,7 +80,9 @@ provide component checks; each passing capture checks all 921600 pixels.
 
 The source audit compiles **143/172** graphics stages to Liverpool GCN, with ten
 required stages covering those pairs plus zfill/shadow. Cubes remain limited to
-six faces and one mip, now RGBA8 or sampled D32; depth fixtures are uploaded or
-host-written, not rendered by a shadow-caster pass. Nearest LESS comparison is
-tested. Shadow-map rendering, filtering/mips, integration into the graphical
-game client and physical PS4 verification remain. See [Vulkan upgrade status](VULKAN_UPGRADE.md).
+six faces and one mip, now RGBA8 or sampled D32. Nearest LESS comparison is
+tested. A further `shadowcast` probe renders two overlapping quads into a 128×64
+D32 attachment and samples it in DUDE's original projected-light pass. Its
+moving shadow, depth ordering and per-frame clearing match all 921600 pixels.
+Cube attachments, filtering/mips, integration into the graphical game client
+and physical PS4 verification remain. See [Vulkan upgrade status](VULKAN_UPGRADE.md).

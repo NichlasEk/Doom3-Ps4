@@ -11,8 +11,8 @@ root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
 mode = sys.argv[1] if len(sys.argv) > 1 else 'demote'
-if mode not in ('demote', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow'):
-    raise SystemExit('Use demote, generic, cube, ambient, shadow, texops, interaction, interactionshadow or cubeshadow')
+if mode not in ('demote', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast'):
+    raise SystemExit('Use demote, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow or shadowcast')
 profile = root / ('build/shader-probe-profile-'+mode)
 out = root / ('artifacts/shader-probe-'+mode)
 out.mkdir(parents=True, exist_ok=True)
@@ -59,6 +59,8 @@ with (out/'emulator.log').open('w') as log:
                     expected = colors[min(int((x+.5)*6/1280),5)]
                 elif mode == 'ambient':
                     expected = (0,128,128)
+                elif mode == 'shadowcast':
+                    expected = (0,0,0) if 480 <= x < 1120 and 180 <= y < 540 else (128,128,128)
                 elif mode == 'interactionshadow':
                     expected = (128,128,128) if x < 640 else (0,0,0)
                 elif mode == 'interaction':

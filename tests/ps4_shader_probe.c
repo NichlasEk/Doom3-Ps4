@@ -30,6 +30,9 @@ static const float g_vertices[] = {
 
 #ifdef PROBE_LIGHTING
 #include "probe_lighting.h"
+#ifdef PROBE_SHADOW_CAST
+#include "probe_shadow_cast.h"
+#endif
 #endif
 
 int main(void) {
@@ -362,6 +365,11 @@ int main(void) {
     uniform_data[0][PARAM_u_shadowProjectionT+3]=.5;
     uniform_data[0][PARAM_u_shadowProjectionQ+3]=1;
     uniform_data[0][PARAM_u_lightFalloffS]=.5;
+#ifdef PROBE_SHADOW_CAST
+    uniform_data[0][PARAM_u_lightFalloffS]=0;
+    uniform_data[0][PARAM_u_shadowProjectionS]=.5;
+    uniform_data[0][PARAM_u_shadowProjectionT+1]=.5;
+#endif
 #endif
 #endif
 #endif
@@ -553,6 +561,10 @@ int main(void) {
         vk_ps4_log_raw("TEST: pipeline OK");
     }
 
+#ifdef PROBE_SHADOW_CAST
+    ShadowCaster caster={0};
+    if (setup_shadow_caster(dev,lighting.views[7],&gpci,&caster)) return 1;
+#endif
     /* 12. Create command pool + buffer */
     VkCommandPoolCreateInfo cp_ci = {0};
     cp_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -604,6 +616,9 @@ int main(void) {
 
 #ifdef PROBE_LIGHTING
         if (!frame) upload_lighting(cmd, &lighting);
+#ifdef PROBE_SHADOW_CAST
+        draw_shadow_caster(cmd,lighting.images[7],&caster,frame);
+#endif
 #elif defined(PROBE_DUDE_GENERIC)
         if (!frame) {
             VkImageMemoryBarrier barrier = {0};
@@ -684,8 +699,10 @@ int main(void) {
         }
     }
     CHECK(vkQueueWaitIdle(queue));
-#ifdef PROBE_LIGHTING
-    vk_ps4_log_raw("PROBE CAPTURE READY: cube/ambient lighting");
+#ifdef PROBE_SHADOW_CAST
+    vk_ps4_log_raw("PROBE CAPTURE READY: geometry depth to DUDE projected shadow");
+#elif defined(PROBE_LIGHTING)
+    vk_ps4_log_raw("PROBE CAPTURE READY: cube/lighting");
 #elif defined(PROBE_DUDE_GENERIC)
     vk_ps4_log_raw("PROBE CAPTURE READY: DUDE generic texture and alpha test");
 #else
@@ -704,6 +721,9 @@ int main(void) {
     vkDestroyCommandPool(dev, cmd_pool, NULL);
     vkDestroyPipeline(dev, pipeline, NULL);
 #ifdef PROBE_LIGHTING
+#ifdef PROBE_SHADOW_CAST
+    destroy_shadow_caster(dev,&caster);
+#endif
     destroy_lighting(dev, &lighting);
 #elif defined(PROBE_DUDE_GENERIC)
     vkDestroySampler(dev, texture_sampler, NULL);

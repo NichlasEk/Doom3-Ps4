@@ -45,3 +45,10 @@ sampled D32 image/upload support. DUDE's original interaction shader pair is
 pixel-tested with unshadowed and projected-shadow fixtures. Shadow maps here
 contain synthetic uploaded/host-written depths; shadow-caster rendering and
 physical PS4 output remain unverified. See `docs/VULKAN_UPGRADE.md` for limits.
+
+The geometry-shadow milestone fixes the sampled descriptor for D32 depth
+attachments (actual depth tiling/pitch and bound base address), rejects
+unsupported sampled attachment/view shapes, and stops the silent fallback on
+GNM depth-target allocation failure. A two-pass geometric fixture validates
+clear/depth ordering/reuse and reading that target through DUDE's original
+interaction shader. HTILE and layered/cube depth attachments are not enabled.

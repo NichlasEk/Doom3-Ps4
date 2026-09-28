@@ -1,5 +1,5 @@
 /* Synthetic textures for cube sampling and unmodified DUDE lighting shaders.
- * Depth cubes are uploaded data, not shadow-caster render targets. */
+ * Depth cubes are uploaded data. The shadowcast variant renders the 2D map. */
 #ifdef PROBE_INTERACTION
 #define LIGHT_IMAGES 15
 #else
@@ -68,6 +68,24 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
         ci.usage=VK_IMAGE_USAGE_SAMPLED_BIT | (cube?VK_IMAGE_USAGE_TRANSFER_DST_BIT:0);
         ci.flags=cube?VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT:0;
         ci.initialLayout=cube?VK_IMAGE_LAYOUT_UNDEFINED:VK_IMAGE_LAYOUT_PREINITIALIZED;
+#ifdef PROBE_SHADOW_CAST
+        if (i==7) {
+            ci.extent=(VkExtent3D){128,64,1};
+            ci.tiling=VK_IMAGE_TILING_OPTIMAL;
+            ci.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+            ci.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+            for(unsigned bad=0;bad<3;++bad) {
+                VkImageCreateInfo unsupported=ci;
+                if(bad==0) unsupported.format=VK_FORMAT_D16_UNORM;
+                if(bad==1) unsupported.arrayLayers=2;
+                if(bad==2) unsupported.mipLevels=2;
+                VkImage rejected=VK_NULL_HANDLE;
+                if(vkCreateImage(dev,&unsupported,NULL,&rejected)!=VK_ERROR_FEATURE_NOT_PRESENT) {
+                    vk_ps4_log_raw("FAIL: unsupported sampled depth attachment accepted"); return 1;
+                }
+            }
+        }
+#endif
         if (!i) {
             VkImageCreateInfo unsupported = ci;
             unsupported.arrayLayers = 12;
@@ -81,7 +99,11 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
         ai.allocationSize=req.size;
         CHECK(vkAllocateMemory(dev,&ai,NULL,&r->memory[i]));
         CHECK(vkBindImageMemory(dev,r->images[i],r->memory[i],0));
-        if (!cube) {
+        if (!cube
+#ifdef PROBE_SHADOW_CAST
+            && i!=7
+#endif
+        ) {
             const unsigned char white[]={255,255,255,255};
             const unsigned char normal[]={0,128,255,128};
             const unsigned char diffuse[]={128,128,128,255};
@@ -103,6 +125,16 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
                 vk_ps4_log_raw("FAIL: cube face view must remain unsupported"); return 1;
             }
         }
+#ifdef PROBE_SHADOW_CAST
+        if(i==7) {
+            VkImageViewCreateInfo unsupported=view;
+            unsupported.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+            VkImageView rejected=VK_NULL_HANDLE;
+            if(vkCreateImageView(dev,&unsupported,NULL,&rejected)!=VK_ERROR_FEATURE_NOT_PRESENT) {
+                vk_ps4_log_raw("FAIL: color view of sampled depth attachment accepted"); return 1;
+            }
+        }
+#endif
         CHECK(vkCreateImageView(dev,&view,NULL,&r->views[i]));
         VkDescriptorImageInfo info={depth?r->shadow_sampler:r->sampler,r->views[i],VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet write={0}; write.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -114,6 +146,9 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
 }
 static void upload_lighting(VkCommandBuffer cmd, const LightingResources *r) {
     for (unsigned i=0; i<LIGHT_IMAGES; ++i) {
+#ifdef PROBE_SHADOW_CAST
+        if(i==7) continue; /* Rendered by the caster pass. */
+#endif
         bool cube = i==0, depth=false;
 #ifdef PROBE_INTERACTION
         cube = cube || i==8 || i==12;

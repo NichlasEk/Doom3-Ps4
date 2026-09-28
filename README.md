@@ -48,5 +48,10 @@ checks in shadPS4. See the upgrade status for the bounded cube implementation.
 Additional modes: `interaction` runs DUDE's original direct-light shader pair;
 `interactionshadow` enables its projected-shadow branch. `shadow`, `cubeshadow`
 and `texops` isolate depth comparisons and texture fetch/gradient operations.
-All use the same build/run commands above with the mode substituted. These are
-synthetic resource fixtures; rendering shadow maps from scene geometry remains.
+All use the same build/run commands above with the mode substituted. Those
+fixtures use uploaded or host-written shadow depths.
+
+`shadowcast` adds a real depth-rendering pass: overlapping geometric quads write
+a 128×64 shadow map, then DUDE's interaction shaders sample it. The pixel check
+also verifies depth ordering and clearing when the projection moves between
+frames. This remains a standalone scene, separate from the Doom game client.

@@ -6,8 +6,8 @@ converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
 case "$mode" in
-  demote|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow) ;;
-  *) echo 'Use demote, generic, cube, ambient, shadow, texops, interaction, interactionshadow or cubeshadow' >&2; exit 1 ;;
+  demote|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast) ;;
+  *) echo 'Use demote, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow or shadowcast' >&2; exit 1 ;;
 esac
 out="$root/build/shader-probe-$mode"
 defines=()
@@ -15,17 +15,18 @@ if [[ "$mode" != demote ]]; then defines=(-DPROBE_DUDE_GENERIC); fi
 case "$mode" in
   cube) defines+=(-DPROBE_LIGHTING) ;;
   ambient) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT) ;;
-  interaction|interactionshadow|cubeshadow) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT -DPROBE_INTERACTION) ;;
+  interaction|interactionshadow|cubeshadow|shadowcast) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT -DPROBE_INTERACTION) ;;
   shadow) defines+=(-DPROBE_SHADOW) ;;
 esac
-if [[ "$mode" == interactionshadow ]]; then defines+=(-DPROBE_INTERACTION_SHADOW); fi
+if [[ "$mode" == shadowcast ]]; then defines+=(-DPROBE_SHADOW_CAST); fi
+if [[ "$mode" == interactionshadow || "$mode" == shadowcast ]]; then defines+=(-DPROBE_INTERACTION_SHADOW); fi
 "$root/scripts/build-native-vulkan.sh"
 mkdir -p "$out"
 if [[ "$mode" != demote ]]; then python3 "$root/scripts/audit-dude-shaders.py"; fi
 for stage in vert frag; do
-  if [[ "$mode" == generic || "$mode" == ambient || "$mode" == interaction || "$mode" == interactionshadow ]]; then
+  if [[ "$mode" == generic || "$mode" == ambient || "$mode" == interaction || "$mode" == interactionshadow || "$mode" == shadowcast ]]; then
     shader=generic
-    if [[ "$mode" == interaction || "$mode" == interactionshadow ]]; then shader=interaction; fi
+    if [[ "$mode" == interaction || "$mode" == interactionshadow || "$mode" == shadowcast ]]; then shader=interaction; fi
     if [[ "$mode" == ambient ]]; then shader=ambientlight; fi
     cp "$root/build/dude-shaders/spv/$shader.$stage.spv" "$out/$stage.spv"
   else
@@ -33,12 +34,18 @@ for stage in vert frag; do
   fi
   spirv-val --target-env vulkan1.4 "$out/$stage.spv"
 done
+if [[ "$mode" == shadowcast ]]; then
+  for stage in vert frag; do
+    glslc --target-env=vulkan1.4 "$root/tests/shaders/caster.$stage" -o "$out/caster_$stage.spv"
+    spirv-val --target-env vulkan1.4 "$out/caster_$stage.spv"
+  done
+fi
 spirv-dis "$out/frag.spv" -o "$out/frag.spvasm"
 if [[ "$mode" == demote || "$mode" == generic ]]; then rg -q 'OpDemoteToHelperInvocation' "$out/frag.spvasm"; fi
 python3 - "$out" "$root" "$mode" <<'PY'
 import pathlib,struct,sys
 out=pathlib.Path(sys.argv[1]); text='#include <stdint.h>\n'
-for stage in ('vert','frag'):
+for stage in (('vert','frag','caster_vert','caster_frag') if sys.argv[3]=='shadowcast' else ('vert','frag')):
     data=(out/(stage+'.spv')).read_bytes()
     words=struct.unpack('<'+'I'*(len(data)//4), data)
     text+='static const uint32_t g_'+stage+'_spv[] = {'+','.join(hex(w) for w in words)+'};\n'
