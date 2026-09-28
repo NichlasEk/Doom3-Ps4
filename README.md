@@ -41,7 +41,7 @@ A standalone shader probe now renders DUDE's real generic GUI/material shaders
 in shadPS4 with an exact texture/alpha-test pixel check. Build it with
 `scripts/build-shader-probe.sh generic`, then run
 `xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py generic`.
-This validates a renderer component; the graphical game client is still pending.
+This validates a renderer component separately from the graphical game client.
 
 The same probe supports `cube` (six-face upload/sampling) and `ambient`
 (DUDE's original ambient-light shader pair). Both pass exact 1280×720 image
@@ -57,3 +57,8 @@ fixtures use uploaded or host-written shadow depths.
 a 128×64 shadow map, then DUDE's interaction shaders sample it. The pixel check
 also verifies depth ordering and clearing when the projection moves between
 frames. This remains a standalone scene, separate from the Doom game client.
+
+`present` verifies tiled RGBA8 clears and VideoOut presentation. `depthstencil`
+and `depthregion` check D32S8 depth copies, including different-sized buffers
+and offset regions. These now pass pixel checks; scene-depth capture is enabled
+in the graphical client. See [test evidence](docs/PS4_CLIENT.md).

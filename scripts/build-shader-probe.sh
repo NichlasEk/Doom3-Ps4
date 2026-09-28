@@ -6,11 +6,15 @@ converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
 case "$mode" in
-  demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
-  *) echo 'Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast or depthcopy' >&2; exit 1 ;;
+  depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
+  *) echo 'Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
 esac
 out="$root/build/shader-probe-$mode"
 defines=()
+if [[ "$mode" == depthregion ]]; then mode=depthcopy; defines+=(-DPROBE_DEPTH_STENCIL -DPROBE_DEPTH_REGION); fi
+if [[ "$mode" == stencilcast ]]; then mode=shadowcast; defines+=(-DPROBE_DEPTH_STENCIL); fi
+if [[ "$mode" == depthstencil ]]; then mode=depthcopy; defines+=(-DPROBE_DEPTH_STENCIL); fi
+if [[ "$mode" == clear ]]; then mode=present; defines+=(-DPROBE_CLEAR_ONLY); fi
 if [[ "$mode" != demote && "$mode" != dynamic && "$mode" != present ]]; then defines+=(-DPROBE_DUDE_GENERIC); fi
 case "$mode" in
   cube) defines+=(-DPROBE_LIGHTING) ;;

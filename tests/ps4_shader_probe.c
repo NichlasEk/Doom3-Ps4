@@ -681,6 +681,9 @@ int main(void) {
         rpbi.renderArea.extent = (VkExtent2D){1280, 720};
         VkClearValue clear = {0};
         clear.color.float32[0] = 0.1f;
+#ifdef PROBE_PRESENT
+        clear.color.float32[0] = (frame&1)?0.1f:0.7f;
+#endif
         clear.color.float32[1] = 0.1f;
         clear.color.float32[2] = 0.2f;
         clear.color.float32[3] = 1.0f;
@@ -699,11 +702,15 @@ int main(void) {
         VkRect2D half={{0,0},{640,720}};
         vkCmdSetScissor(cmd,0,1,&half);
         vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pl,1,1,&sets[1],1,&dynamic_offset);
+#ifndef PROBE_CLEAR_ONLY
         vkCmdDraw(cmd,3,1,0,0);
+#endif
         dynamic_offset=256; half.offset.x=640;
         vkCmdSetScissor(cmd,0,1,&half);
         vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pl,1,1,&sets[1],1,&dynamic_offset);
+#ifndef PROBE_CLEAR_ONLY
         vkCmdDraw(cmd,3,1,0,0);
+#endif
 #else
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl, 1, 1, &sets[1], 0, NULL);
         vkCmdDraw(cmd, 3, 1, 0, 0);

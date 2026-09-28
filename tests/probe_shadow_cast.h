@@ -18,7 +18,13 @@ static int setup_shadow_caster(VkDevice dev, VkImageView view,
 #ifdef PROBE_DEPTH_COPY
     VkImageCreateInfo ci={0}; ci.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ci.imageType=VK_IMAGE_TYPE_2D; ci.format=VK_FORMAT_D32_SFLOAT;
+#ifdef PROBE_DEPTH_STENCIL
+    ci.format=VK_FORMAT_D32_SFLOAT_S8_UINT;
+#endif
     ci.extent=(VkExtent3D){128,64,1}; ci.mipLevels=ci.arrayLayers=1;
+#ifdef PROBE_DEPTH_REGION
+    ci.extent=(VkExtent3D){160,96,1};
+#endif
     ci.samples=VK_SAMPLE_COUNT_1_BIT; ci.tiling=VK_IMAGE_TILING_OPTIMAL;
     ci.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
     CHECK(vkCreateImage(dev,&ci,NULL,&r->source));
@@ -34,6 +40,9 @@ static int setup_shadow_caster(VkDevice dev, VkImageView view,
 #endif
     VkAttachmentDescription attachment={0};
     attachment.format=VK_FORMAT_D32_SFLOAT;
+#ifdef PROBE_DEPTH_STENCIL
+    attachment.format=VK_FORMAT_D32_SFLOAT_S8_UINT;
+#endif
     attachment.samples=VK_SAMPLE_COUNT_1_BIT;
     attachment.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachment.storeOp=VK_ATTACHMENT_STORE_OP_STORE;
@@ -50,6 +59,9 @@ static int setup_shadow_caster(VkDevice dev, VkImageView view,
     VkFramebufferCreateInfo fb={0}; fb.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     fb.renderPass=r->pass; fb.attachmentCount=1; fb.pAttachments=&view;
     fb.width=128; fb.height=64; fb.layers=1;
+#ifdef PROBE_DEPTH_REGION
+    fb.width=160; fb.height=96;
+#endif
     CHECK(vkCreateFramebuffer(dev,&fb,NULL,&r->framebuffer));
     VkPipelineShaderStageCreateInfo stages[2]={0};
     for(unsigned i=0;i<2;++i) {
@@ -110,6 +122,9 @@ static void draw_shadow_caster(VkCommandBuffer cmd, VkImage image, const ShadowC
     VkClearValue clear={.depthStencil={1,0}};
     VkRenderPassBeginInfo begin={0}; begin.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     begin.renderPass=r->pass; begin.framebuffer=r->framebuffer; begin.renderArea=sc;
+#ifdef PROBE_DEPTH_REGION
+    begin.renderArea.extent=(VkExtent2D){160,96};
+#endif
     begin.clearValueCount=1; begin.pClearValues=&clear;
     vkCmdBeginRenderPass(cmd,&begin,VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r->pipeline);
@@ -134,6 +149,15 @@ static void draw_shadow_caster(VkCommandBuffer cmd, VkImage image, const ShadowC
     VkImageCopy copy={0}; copy.srcSubresource=copy.dstSubresource=(VkImageSubresourceLayers){VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1};
     copy.extent=(VkExtent3D){128,64,1};
     vkCmdCopyImage(cmd,r->source,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&copy);
+#ifdef PROBE_DEPTH_REGION
+    /* Repeat with nonzero source/destination offsets after the full copy.
+     * This checks different pitches, untouched pixels and immutable params. */
+    VkMemoryBarrier order={VK_STRUCTURE_TYPE_MEMORY_BARRIER,NULL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_TRANSFER_WRITE_BIT};
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&order,0,NULL,0,NULL);
+    copy.srcOffset=(VkOffset3D){8,4,0}; copy.dstOffset=(VkOffset3D){16,32,0};
+    copy.extent=(VkExtent3D){112,32,1};
+    vkCmdCopyImage(cmd,r->source,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&copy);
+#endif
     dst.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; dst.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     dst.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; dst.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
     vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&dst);

@@ -285,7 +285,7 @@ index 1d6f481..28a7dab 100644
  			R_FreeStaticTriSurfIndexes( &tri );
  		} // else silInfos[i].indexes points directly into the corresponding data in this->md3
 diff --git a/neo/renderer/rhi/vk/VulkanBackend.cpp b/neo/renderer/rhi/vk/VulkanBackend.cpp
-index 3eaad02..cb49498 100644
+index 3eaad02..4a0630a 100644
 --- a/neo/renderer/rhi/vk/VulkanBackend.cpp
 +++ b/neo/renderer/rhi/vk/VulkanBackend.cpp
 @@ -33,6 +33,11 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
@@ -464,25 +464,15 @@ index 3eaad02..cb49498 100644
  	// per-slot set 0, pointing at that slot's UBO ring (persistent pool)
  	{
  		VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, FRAMES_IN_FLIGHT };
-@@ -8625,6 +8663,17 @@ Contents are undefined until the first CopyFramebufferToImage.
+@@ -8625,6 +8663,7 @@ Contents are undefined until the first CopyFramebufferToImage.
  ====================
  */
  ImageHandle VulkanBackend::CreateCaptureImage( int w, int h, bool depth, bool hdrFloat ) {
-+#ifdef __PS4__
-+    // D32 shadows are tested separately. Sampling a captured D32S8 scene is
-+    // not correct yet; callers already handle an unavailable capture handle.
-+    if (depth) {
-+        static bool warned=false;
-+        if (!warned) common->Warning("PS4: scene depth capture is unavailable in the menu diagnostic");
-+        warned=true;
-+        return 0;
-+    }
-+#endif
 +
  	if ( device == VK_NULL_HANDLE || w <= 0 || h <= 0 ) {
  		return 0;
  	}
-@@ -9035,6 +9084,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
+@@ -9035,6 +9074,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
  */
  ImageHandle VulkanBackend::CreateTextureCube( int size, const void * const pics[6],
                                                int textureFilter, bool allowMips ) {
@@ -492,7 +482,7 @@ index 3eaad02..cb49498 100644
  	if ( device == VK_NULL_HANDLE || size <= 0 || pics == NULL || uploadCb == VK_NULL_HANDLE ) {
  		return 0;
  	}
-@@ -11242,8 +11294,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
+@@ -11242,8 +11284,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
  			return;
  		}
  		// GPU-written count form (Phase 3 cull output): draw min(*count, drawCount) commands
@@ -505,7 +495,7 @@ index 3eaad02..cb49498 100644
  	} else {
  		vkCmdDrawIndexedIndirect( cb, ab, (VkDeviceSize)argsOffset, (uint32_t)drawCount, (uint32_t)stride );
  	}
-@@ -11927,7 +11983,7 @@ bool VulkanBackend::ImGuiInit() {
+@@ -11927,7 +11973,7 @@ bool VulkanBackend::ImGuiInit() {
  	}
  
  	ImGui_ImplVulkan_InitInfo ii = {};

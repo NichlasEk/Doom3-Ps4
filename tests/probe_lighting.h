@@ -73,18 +73,13 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
             ci.extent=(VkExtent3D){128,64,1};
             ci.tiling=VK_IMAGE_TILING_OPTIMAL;
             ci.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+#ifdef PROBE_DEPTH_STENCIL
+            ci.format=VK_FORMAT_D32_SFLOAT_S8_UINT;
+#endif
 #ifdef PROBE_DEPTH_COPY
             ci.usage=VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
 #endif
             ci.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
-#ifdef PROBE_DEPTH_COPY
-            VkImageCreateInfo unsupported_stencil=ci;
-            unsupported_stencil.format=VK_FORMAT_D32_SFLOAT_S8_UINT;
-            VkImage rejected_stencil=VK_NULL_HANDLE;
-            if(vkCreateImage(dev,&unsupported_stencil,NULL,&rejected_stencil)!=VK_ERROR_FEATURE_NOT_PRESENT) {
-                vk_ps4_log_raw("FAIL: unverified sampled D32S8 must be rejected"); return 1;
-            }
-#endif
             #ifndef PROBE_DEPTH_COPY
             for(unsigned bad=0;bad<3;++bad) {
                 VkImageCreateInfo unsupported=ci;

@@ -290,7 +290,7 @@ Two defects in the inherited image path were fixed:
 
 Depth creation now reports allocation failure if GNM target creation fails,
 instead of silently replacing it with a texture. Combined sampled/depth
-attachments are bounded to optimal-tiled, single-layer, single-mip D32 2D
+attachments are bounded to optimal-tiled, single-layer, single-mip D32/D32S8 2D
 images with full identity depth views. The fixture checks rejection of D16,
 multiple layers/mips and a color-aspect view. HTILE compression is disabled.
 The existing conservative command-buffer barrier flushes/waits for depth
@@ -320,5 +320,8 @@ The private Vulkan 1.1 path is now connected to a separate DUDE PS4 client.
 Dynamic UBO snapshots, bounded depth-plane copies and 1:1 VideoOut transfers
 allow the real main menu to render in shadPS4. The menu diagnostic completes
 60 engine frames. This is not Vulkan 1.4 support or gameplay validation.
-See [client status](PS4_CLIENT.md), including the failing tiled-color-clear
-probe and the slow DMA-based presentation path.
+Tiled RGBA8 clears now pass the presentation pixel probe. D32/D32S8 depth-plane
+copies use a fragment shader; full and offset copies between different-sized
+attachments pass pixel checks. The client enables scene-depth capture again.
+See [client status](PS4_CLIENT.md) for reproduction and the remaining slow
+DMA-based presentation path and unverified gameplay effects.

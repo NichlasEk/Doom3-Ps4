@@ -94,4 +94,6 @@ The graphical DUDE PS4 diagnostic now renders the real Doom 3 main menu in
 shadPS4 and completes 60 engine frames with guest exit 0 (64 presented frames
 including startup). See [build/run instructions, evidence and remaining
 defects](PS4_CLIENT.md). Controls, audio, map rendering and physical PS4 remain
-unverified; the tiled-color-clear pixel probe still fails.
+unverified. Tiled RGBA8 clears and D32/D32S8 depth-plane copies now pass pixel
+checks, including copies with different dimensions and nonzero offsets. Scene
+depth capture is enabled again; depth-dependent gameplay effects remain untested.

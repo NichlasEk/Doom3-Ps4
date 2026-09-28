@@ -11,8 +11,8 @@ root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
 mode = sys.argv[1] if len(sys.argv) > 1 else 'demote'
-if mode not in ('demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
-    raise SystemExit('Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast or depthcopy')
+if mode not in ('depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
+    raise SystemExit('Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion')
 profile = root / ('build/shader-probe-profile-'+mode)
 out = root / ('artifacts/shader-probe-'+mode)
 out.mkdir(parents=True, exist_ok=True)
@@ -54,14 +54,19 @@ with (out/'emulator.log').open('w') as log:
         for y in range(720):
             for x in range(1280):
                 expected = (26,26,51) if (x // stripe_width) % 2 else (0,255,0)
-                if mode in ('dynamic','present') and x >= 640 and x%2 == 0:
+                if mode == 'clear':
+                    expected = (26,26,51)
+                elif mode in ('dynamic','present') and x >= 640 and x%2 == 0:
                     expected = (0,0,255)
                 elif mode == 'cube':
                     colors = [(255,0,0),(0,255,0),(0,0,255),(255,255,0),(0,255,255),(255,0,255)]
                     expected = colors[min(int((x+.5)*6/1280),5)]
                 elif mode == 'ambient':
                     expected = (0,128,128)
-                elif mode in ('shadowcast','depthcopy'):
+                elif mode == 'depthregion':
+                    shadow = (480 <= x < 1120 and 180 <= y < 360) or (560 <= x < 1200 and 495 <= y < 720)
+                    expected = (0,0,0) if shadow else (128,128,128)
+                elif mode in ('shadowcast','depthcopy','depthstencil','stencilcast'):
                     expected = (0,0,0) if 480 <= x < 1120 and 180 <= y < 540 else (128,128,128)
                 elif mode == 'interactionshadow':
                     expected = (128,128,128) if x < 640 else (0,0,0)

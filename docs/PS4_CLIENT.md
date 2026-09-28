@@ -51,11 +51,17 @@ not automatically declare the menu correct based on a successful exit.
 - Dynamic UBO offsets are validated in binding order, with bounds/alignment
   checks and per-draw descriptor snapshots. The `dynamic` probe checks two
   differently colored draws in one recording (921600 pixels).
-- Bounded full-image D32 depth-plane copies require matching dimensions
-  and tile layout. Sampled transfer destinations use the same depth layout;
-  D32S8 sampling and partial/differing-layout copies fail closed.
-  The `depthcopy` probe draws depth geometry and samples its copied image in
-  DUDE's projected-light shader.
+- Bounded D32/D32S8 depth-plane copies now use a fragment shader and depth
+  attachment writes. Single-mip/layer 2D copies support different dimensions
+  and nonzero source/destination offsets. Sampling uses the depth plane with
+  HTILE disabled. The `depthcopy`, `depthstencil` and `depthregion` probes sample
+  copied geometry in DUDE's projected-light shader. Stencil-plane copying,
+  multisampling, mip chains and cube attachments remain unsupported.
+- Tiled RGBA8 clears use a regenerated PSBC shader, its indirect resource table,
+  immutable GPU constants and explicit viewport/scissor/depth state. Colors
+  are quantized before FP16 export to preserve the requested UNORM byte value.
+  The `present` probe alternates the clear color between frames and checks all
+  background pixels alongside the green/blue draws.
 - 1:1 RGBA8 scene-to-VideoOut copying uses the GPU detiling/readback path. This
   records many DMA packets and is slow. Recording capacity is 32 MiB with
   packet-aligned submissions. A shader blit is the next performance task.
@@ -63,15 +69,9 @@ not automatically declare the menu correct based on a successful exit.
 
 ## Known graphics defects
 
-The `present` probe is deliberately **not passing**: drawn green/blue pixels
-survive offscreen rendering and presentation, but the intended colored clear
-background is black (460800 of 921600 pixels differ). This isolates an existing
-load-op clear problem for tiled color attachments. The expected image has not
-been relaxed. Menu rendering does not establish this clear behavior is correct.
-The separate D32S8 copy experiment rendered an incorrect shadow image.
-Sampled D32S8 images are therefore rejected, and the PS4 client explicitly
-reports scene-depth capture as unavailable. Depth-dependent screen effects are
-not validated. The `depthcopy` fixture checks both D32 pixels and D32S8 rejection.
+The tiled-color clear and D32S8 depth-copy defects are fixed in focused shadPS4
+pixel tests. Scene-depth capture is enabled again in the PS4 client. These
+component checks do not establish correct depth-dependent effects in gameplay.
 Other scaled/flipped color blits remain incomplete and require independent
 validation before gameplay claims. Original CD data also produces missing
 string-ID warnings; later Doom 3 data compatibility remains a separate gate.
@@ -82,22 +82,38 @@ xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py dynam
 ./scripts/build-shader-probe.sh depthcopy
 xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py depthcopy
 ./scripts/build-shader-probe.sh present
-# Expected to fail until the tiled color clear is fixed:
 xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py present
 ```
+
+Additional isolation probes: `clear` (background only), `stencilcast` (direct
+D32S8 attachment sampling), `depthstencil` (full D32S8 depth-plane copy), and
+`depthregion` (160x96 source to 128x64 destination, then a second copy with
+nonzero source/destination offsets). Each uses the same build/run commands
+above with its mode name. The offset copy also checks untouched pixels and
+that two recorded copies keep separate parameter snapshots.
+
+To regenerate the embedded driver shaders with the pinned patched compiler:
+
+```sh
+python3 build/native/vulkan-ps4/scripts/generate-meta-shaders.py \
+  --psbc build/native/opengnm-psbc/opengnm-psbc
+```
+
+Both GLSL sources and generated PS4 binaries are retained in the native patch.
 
 ## Checkpoint evidence (2026-09-28)
 
 Final client run: `artifacts/client/result.json` reports initialization, 60
 frames, capture and guest exit 0. `capture.png` was manually inspected and
-shows the main menu. The runner's automatic `visual_validation` field stays
+shows the main menu. The driver recorded 60 D32S8 copies: 960x645 regions
+from the 1280x720 scene into a 1024x1024 capture texture. The runner's automatic `visual_validation` field stays
 `not performed`; visual inspection is a separate observation.
 
-- Client ELF SHA-256: `48d422ceeabd1f5c2564f14f394a2be208dbf0c62b0851c57f0ca6e501236e60`
-- Eboot SHA-256: `0cf3ee2ff3516b065740ba91685bca33a86af17bc9c61dd71ef9b1480a82e4e8`
+- Client ELF SHA-256: `d35744c11b855915c8cae2c991a2d826cf2b4f562c39f59a63f5399f1e5c4c92`
+- Eboot SHA-256: `4b0a08c757e877f3ce036329506cafc4e3deeba54f28dfefbef3675d3be713c3`
 - `dynamic`: all 921600 pixels correct, guest exit 0.
-- `depthcopy`: all 921600 pixels correct, guest exit 0; sampled D32S8 creation rejected.
-- `present`: 460800 incorrect pixels, guest exit 0; known clear defect retained.
+- `depthcopy`, `stencilcast`, `depthstencil`, `depthregion`, `present`: each checks
+  all 921600 pixels, with zero mismatches and guest exit 0.
 - Host ASan/UBSan feature, map-memory2 and descriptor-offset checks pass.
 - Both source patches apply cleanly against their pinned upstream revisions.
 
