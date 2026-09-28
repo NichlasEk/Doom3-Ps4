@@ -73,7 +73,19 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
             ci.extent=(VkExtent3D){128,64,1};
             ci.tiling=VK_IMAGE_TILING_OPTIMAL;
             ci.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+#ifdef PROBE_DEPTH_COPY
+            ci.usage=VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+#endif
             ci.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+#ifdef PROBE_DEPTH_COPY
+            VkImageCreateInfo unsupported_stencil=ci;
+            unsupported_stencil.format=VK_FORMAT_D32_SFLOAT_S8_UINT;
+            VkImage rejected_stencil=VK_NULL_HANDLE;
+            if(vkCreateImage(dev,&unsupported_stencil,NULL,&rejected_stencil)!=VK_ERROR_FEATURE_NOT_PRESENT) {
+                vk_ps4_log_raw("FAIL: unverified sampled D32S8 must be rejected"); return 1;
+            }
+#endif
+            #ifndef PROBE_DEPTH_COPY
             for(unsigned bad=0;bad<3;++bad) {
                 VkImageCreateInfo unsupported=ci;
                 if(bad==0) unsupported.format=VK_FORMAT_D16_UNORM;
@@ -84,6 +96,7 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
                     vk_ps4_log_raw("FAIL: unsupported sampled depth attachment accepted"); return 1;
                 }
             }
+            #endif
         }
 #endif
         if (!i) {
@@ -125,7 +138,7 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
                 vk_ps4_log_raw("FAIL: cube face view must remain unsupported"); return 1;
             }
         }
-#ifdef PROBE_SHADOW_CAST
+#if defined(PROBE_SHADOW_CAST) && !defined(PROBE_DEPTH_COPY)
         if(i==7) {
             VkImageViewCreateInfo unsupported=view;
             unsupported.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
@@ -146,7 +159,7 @@ static int setup_lighting(VkDevice dev, VkDescriptorSet set, LightingResources *
 }
 static void upload_lighting(VkCommandBuffer cmd, const LightingResources *r) {
     for (unsigned i=0; i<LIGHT_IMAGES; ++i) {
-#ifdef PROBE_SHADOW_CAST
+#if defined(PROBE_SHADOW_CAST) && !defined(PROBE_DEPTH_COPY)
         if(i==7) continue; /* Rendered by the caster pass. */
 #endif
         bool cube = i==0, depth=false;

@@ -67,7 +67,7 @@ index e104443..2219618 100644
  	      sce_module/libc.prx sce_module/libSceFios2.prx $(PKG_CONTENT_ID).pkg
  	@rm -rf sce_sys sce_module
 diff --git a/include/vk_ps4_internal.h b/include/vk_ps4_internal.h
-index 7634d6b..5c9739f 100644
+index 7634d6b..a537581 100644
 --- a/include/vk_ps4_internal.h
 +++ b/include/vk_ps4_internal.h
 @@ -42,6 +42,11 @@
@@ -90,7 +90,7 @@ index 7634d6b..5c9739f 100644
      GnmPsStageRegisters clear_ps_regs;
      bool clear_ps_ready;
  };
-@@ -246,6 +252,20 @@ struct VkPs4CommandBuffer {
+@@ -246,6 +252,21 @@ struct VkPs4CommandBuffer {
      } current_render_pass;
      /* Current pipeline */
      VkPs4Pipeline *current_pipeline;
@@ -99,6 +99,7 @@ index 7634d6b..5c9739f 100644
 +    VkRect2D screen_scissor;
 +    bool screen_scissor_valid;
 +    VkPs4DescriptorSet *graphics_sets[2];
++    uint32_t graphics_dynamic_offsets[2][16];
 +    VkResult resource_error;
 +    GnmDirectMemory barrier_label;
 +    GnmDirectMemory readback_scratch[16];
@@ -111,7 +112,7 @@ index 7634d6b..5c9739f 100644
      /* Bound vertex buffers */
      struct {
          VkBuffer buffer;
-@@ -318,6 +338,9 @@ struct VkPs4Image {
+@@ -318,6 +339,9 @@ struct VkPs4Image {
       * these fields identify the video out handle and buffer index so
       * that CmdBeginRenderPass can emit WaitUntilSafeForRendering. */
      bool is_swapchain_image;
@@ -121,7 +122,7 @@ index 7634d6b..5c9739f 100644
      int32_t video_out_handle;
      uint32_t swapchain_buffer_index;
      VkPs4DeviceMemory *memory;
-@@ -444,6 +467,7 @@ struct VkPs4PipelineLayout {
+@@ -444,6 +468,7 @@ struct VkPs4PipelineLayout {
  
  /* === Pipeline === */
  struct VkPs4Pipeline {
@@ -129,7 +130,7 @@ index 7634d6b..5c9739f 100644
      VkPs4ObjectType type;
      VkPs4Device *device;
      VkPipelineBindPoint bind_point;
-@@ -457,6 +481,10 @@ struct VkPs4Pipeline {
+@@ -457,6 +482,10 @@ struct VkPs4Pipeline {
      /* Compiled GCN shader binaries — kept alive for the pipeline's lifetime
       * because the stage registers contain GPU addresses that point into
       * these buffers.  Freed in DestroyPipeline. */
@@ -140,7 +141,7 @@ index 7634d6b..5c9739f 100644
      void *vs_binary;
      void *ps_binary;
      void *gs_binary;
-@@ -496,6 +524,7 @@ struct VkPs4Pipeline {
+@@ -496,6 +525,7 @@ struct VkPs4Pipeline {
      VkPipelineMultisampleStateCreateInfo multisample_state;
      /* Fetch shader (generated from vertex input) */
      void *fetch_shader;
@@ -148,7 +149,16 @@ index 7634d6b..5c9739f 100644
      size_t fetch_shader_size;
      bool has_fetch_shader;
      bool has_ps;          /* true if fragment shader was set */
-@@ -572,6 +601,7 @@ struct VkPs4DescriptorPool {
+@@ -557,6 +587,8 @@ typedef struct {
+     uint32_t count;
+     uint32_t binding_number;  /* Vulkan binding number (may be sparse) */
+     bool resources_allocated; /* true once resource arrays are alloc'd */
++    bool dynamic_valid;
++    VkDeviceSize dynamic_max_offset;
+     /* Resource data — which array is valid depends on type */
+     GnmBuffer *buffers;     /* UBO / SSBO / texel buffer */
+     GnmTexture *textures;   /* sampled / storage image */
+@@ -572,6 +604,7 @@ struct VkPs4DescriptorPool {
       * freed sets are kept in the free list for reuse instead of being
       * returned to the allocator.  This reduces allocation overhead for
       * apps that frequently allocate/free descriptor sets. */
@@ -156,7 +166,7 @@ index 7634d6b..5c9739f 100644
      uint32_t sets_allocated;
      uint32_t sets_freed;
  #define VK_PS4_MAX_POOLED_SETS 256
-@@ -583,6 +613,8 @@ struct VkPs4DescriptorSet {
+@@ -583,6 +616,8 @@ struct VkPs4DescriptorSet {
      VkPs4ObjectType type;
      VkPs4Device *device;
      VkPs4DescriptorPool *pool;
@@ -165,7 +175,7 @@ index 7634d6b..5c9739f 100644
      VkPs4DescriptorSetLayout *layout;
      VkPs4DescriptorBinding bindings[VK_PS4_MAX_DESCRIPTOR_BINDINGS];
      uint32_t binding_count;
-@@ -676,6 +708,8 @@ struct VkPs4Swapchain {
+@@ -676,6 +711,8 @@ struct VkPs4Swapchain {
  #define VK_PS4_CHECK_OBJ(handle, expected_type) \
      (VK_PS4_TO_OBJ(handle) && *(VK_PS4_TO_OBJ(handle)) == (expected_type))
  
@@ -176,7 +186,7 @@ index 7634d6b..5c9739f 100644
  void *vk_ps4_alloc_zero(const VkAllocationCallbacks *alloc, size_t size, size_t alignment);
 diff --git a/include/vk_ps4_pm4_chunks.h b/include/vk_ps4_pm4_chunks.h
 new file mode 100644
-index 0000000..91cfc34
+index 0000000..9b6ff80
 --- /dev/null
 +++ b/include/vk_ps4_pm4_chunks.h
 @@ -0,0 +1,31 @@
@@ -184,9 +194,9 @@ index 0000000..91cfc34
 +#ifndef VK_PS4_PM4_CHUNKS_H
 +#define VK_PS4_PM4_CHUNKS_H
 +#include <stdint.h>
-+#define VK_PS4_PM4_RECORDING_BYTES (16u * 1024u * 1024u)
++#define VK_PS4_PM4_RECORDING_BYTES (32u * 1024u * 1024u)
 +#define VK_PS4_PM4_SUBMIT_DWORDS 0xfffffu
-+#define VK_PS4_PM4_MAX_CHUNKS 8u
++#define VK_PS4_PM4_MAX_CHUNKS 16u
 +static inline int vk_ps4_pm4_chunks(const uint32_t *stream, uint32_t words,
 +    uint32_t limit, uint32_t *offsets, uint32_t *sizes, uint32_t *count) {
 +    *count = 0;
@@ -212,7 +222,7 @@ index 0000000..91cfc34
 +}
 +#endif
 diff --git a/src/vk_ps4_command.c b/src/vk_ps4_command.c
-index 168c1f3..f9405be 100644
+index 168c1f3..f329b93 100644
 --- a/src/vk_ps4_command.c
 +++ b/src/vk_ps4_command.c
 @@ -11,15 +11,18 @@
@@ -361,11 +371,12 @@ index 168c1f3..f9405be 100644
                          vk_ps4_free(alloc, c);
                      }
                      pCommandBuffers[j] = VK_NULL_HANDLE;
-@@ -823,18 +854,34 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
+@@ -823,18 +854,35 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
          cmd->is_recording = false;
          cmd->is_begin = false;
          cmd->current_pipeline = NULL;
 +        memset(cmd->graphics_sets, 0, sizeof(cmd->graphics_sets));
++    memset(cmd->graphics_dynamic_offsets, 0, sizeof(cmd->graphics_dynamic_offsets));
 +        cmd->resource_error = VK_SUCCESS;
          cmd->vertex_binding_count = 0;
 +    cmd->vertex_tables_used = 0;
@@ -397,7 +408,7 @@ index 168c1f3..f9405be 100644
                          vk_ps4_free(alloc, c);
                      }
                      pCommandBuffers[j] = VK_NULL_HANDLE;
-@@ -853,7 +900,12 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
+@@ -853,7 +901,12 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
                  pool->command_buffers[pool->command_buffer_count++] = cmd;
              } else {
                  vk_ps4_free(alloc, cmd->pm4_buffer);
@@ -411,7 +422,7 @@ index 168c1f3..f9405be 100644
                  for (uint32_t j = 0; j < i; j++) {
                      VkPs4CommandBuffer *c = (VkPs4CommandBuffer *)pCommandBuffers[j];
                      if (c) {
-@@ -864,6 +916,11 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
+@@ -864,6 +917,11 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
                              }
                          }
                          if (c->pm4_buffer) vk_ps4_free(alloc, c->pm4_buffer);
@@ -423,7 +434,7 @@ index 168c1f3..f9405be 100644
                          vk_ps4_free(alloc, c);
                      }
                      pCommandBuffers[j] = VK_NULL_HANDLE;
-@@ -910,6 +967,11 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
+@@ -910,6 +968,11 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
              pool->free_list[pool->free_count++] = cmd;
          } else {
              if (cmd->pm4_buffer) vk_ps4_free(alloc, cmd->pm4_buffer);
@@ -435,7 +446,7 @@ index 168c1f3..f9405be 100644
              vk_ps4_free(alloc, cmd);
          }
      }
-@@ -917,7 +979,8 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
+@@ -917,7 +980,8 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
  
  VKAPI_ATTR VkResult VKAPI_CALL
  vk_ps4_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo *pBeginInfo) {
@@ -445,7 +456,7 @@ index 168c1f3..f9405be 100644
      if (!commandBuffer) return VK_ERROR_INITIALIZATION_FAILED;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      if (!cmd->pm4_buffer) return VK_ERROR_INITIALIZATION_FAILED;
-@@ -934,12 +997,20 @@ vk_ps4_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBe
+@@ -934,12 +998,21 @@ vk_ps4_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBe
          sceGnmDrawCmdInitDefaultHardwareState(&cmd->gnm_cmd);
      }
  
@@ -457,6 +468,7 @@ index 168c1f3..f9405be 100644
      /* Reset all tracking state */
      cmd->current_pipeline = NULL;
 +    memset(cmd->graphics_sets, 0, sizeof(cmd->graphics_sets));
++    memset(cmd->graphics_dynamic_offsets, 0, sizeof(cmd->graphics_dynamic_offsets));
 +    cmd->resource_error = VK_SUCCESS;
      cmd->vertex_binding_count = 0;
 +    cmd->vertex_tables_used = 0;
@@ -466,7 +478,7 @@ index 168c1f3..f9405be 100644
      cmd->vertex_buffers_dirty = false;
      memset(&cmd->index_buffer, 0, sizeof(cmd->index_buffer));
      memset(cmd->vertex_buffers, 0, sizeof(cmd->vertex_buffers));
-@@ -959,7 +1030,8 @@ vk_ps4_EndCommandBuffer(VkCommandBuffer commandBuffer) {
+@@ -959,7 +1032,8 @@ vk_ps4_EndCommandBuffer(VkCommandBuffer commandBuffer) {
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      cmd->is_recording = false;
      cmd->pm4_used = (uint32_t)(cmd->gnm_cmd.cmdptr - cmd->gnm_cmd.beginptr);
@@ -476,11 +488,12 @@ index 168c1f3..f9405be 100644
  }
  
  VKAPI_ATTR VkResult VKAPI_CALL
-@@ -974,7 +1046,13 @@ vk_ps4_ResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFla
+@@ -974,7 +1048,14 @@ vk_ps4_ResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFla
      cmd->is_recording = false;
      /* Reset all tracking state */
      cmd->current_pipeline = NULL;
 +    memset(cmd->graphics_sets, 0, sizeof(cmd->graphics_sets));
++    memset(cmd->graphics_dynamic_offsets, 0, sizeof(cmd->graphics_dynamic_offsets));
 +    cmd->resource_error = VK_SUCCESS;
      cmd->vertex_binding_count = 0;
 +    cmd->vertex_tables_used = 0;
@@ -490,7 +503,7 @@ index 168c1f3..f9405be 100644
      cmd->vertex_buffers_dirty = false;
      memset(&cmd->index_buffer, 0, sizeof(cmd->index_buffer));
      memset(cmd->vertex_buffers, 0, sizeof(cmd->vertex_buffers));
-@@ -1000,6 +1078,11 @@ vk_ps4_ResetCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPoo
+@@ -1000,6 +1081,11 @@ vk_ps4_ResetCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPoo
          if (pool->free_list[i]) {
              if (pool->free_list[i]->pm4_buffer)
                  vk_ps4_free(alloc, pool->free_list[i]->pm4_buffer);
@@ -502,7 +515,7 @@ index 168c1f3..f9405be 100644
              vk_ps4_free(alloc, pool->free_list[i]);
              pool->free_list[i] = NULL;
          }
-@@ -1021,6 +1104,11 @@ vk_ps4_TrimCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPool
+@@ -1021,6 +1107,11 @@ vk_ps4_TrimCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPool
          if (pool->free_list[i]) {
              if (pool->free_list[i]->pm4_buffer)
                  vk_ps4_free(alloc, pool->free_list[i]->pm4_buffer);
@@ -514,7 +527,7 @@ index 168c1f3..f9405be 100644
              vk_ps4_free(alloc, pool->free_list[i]);
              pool->free_list[i] = NULL;
          }
-@@ -1098,6 +1186,8 @@ vk_ps4_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeli
+@@ -1098,6 +1189,8 @@ vk_ps4_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeli
          /* Set pixel shader only if the pipeline has one */
          if (pipe->has_ps) {
              sceGnmDrawCmdSetPsShader(&cmd->gnm_cmd, &pipe->ps_regs);
@@ -523,7 +536,7 @@ index 168c1f3..f9405be 100644
          }
  
          /* Bind fetch shader if the pipeline has one */
-@@ -1201,6 +1291,7 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
+@@ -1201,6 +1294,7 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
      /* GNM viewport: scale/offset maps Vulkan viewport to GNM */
      for (uint32_t i = 0; i < viewportCount; i++) {
          const VkViewport *vp = &pViewports[i];
@@ -531,7 +544,7 @@ index 168c1f3..f9405be 100644
          GnmSetViewportInfo vp_info;
          vp_info.dmin = vp->minDepth;
          vp_info.dmax = vp->maxDepth;
-@@ -1208,10 +1299,10 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
+@@ -1208,10 +1302,10 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
           * GNM viewport: scale = half-dimension, offset = center */
          vp_info.scale[0] = vp->width * 0.5f;
          vp_info.scale[1] = vp->height * 0.5f;
@@ -544,7 +557,7 @@ index 168c1f3..f9405be 100644
          sceGnmDrawCmdSetViewport(&cmd->gnm_cmd, firstViewport + i, &vp_info);
      }
  }
-@@ -1223,6 +1314,14 @@ vk_ps4_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor, uint3
+@@ -1223,6 +1317,14 @@ vk_ps4_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor, uint3
  
      for (uint32_t i = 0; i < scissorCount; i++) {
          const VkRect2D *sc = &pScissors[i];
@@ -559,7 +572,7 @@ index 168c1f3..f9405be 100644
          sceGnmDrawCmdSetScreenScissor(&cmd->gnm_cmd,
              sc->offset.x, sc->offset.y,
              sc->offset.x + sc->extent.width,
-@@ -1372,43 +1471,17 @@ vk_ps4_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding
+@@ -1372,43 +1474,17 @@ vk_ps4_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding
      if (!commandBuffer || !pBuffers) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -608,7 +621,7 @@ index 168c1f3..f9405be 100644
          }
      }
      /* Update vertex_binding_count only for bindings that were actually stored.
-@@ -1428,6 +1501,10 @@ VKAPI_ATTR void VKAPI_CALL
+@@ -1428,6 +1504,10 @@ VKAPI_ATTR void VKAPI_CALL
  vk_ps4_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkIndexType indexType) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
@@ -619,7 +632,7 @@ index 168c1f3..f9405be 100644
      cmd->index_buffer.buffer = buffer;
      cmd->index_buffer.offset = offset;
      cmd->index_buffer.type = indexType;
-@@ -1448,24 +1525,87 @@ vk_ps4_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDevi
+@@ -1448,24 +1528,88 @@ vk_ps4_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDevi
      }
  }
  
@@ -646,7 +659,8 @@ index 168c1f3..f9405be 100644
 +        switch (attr->format) {
 +        case VK_FORMAT_R32_UINT:
 +        case VK_FORMAT_R32_SINT:
-+        case VK_FORMAT_R32_SFLOAT: bytes = 4; break;
++        case VK_FORMAT_R32_SFLOAT:
++        case VK_FORMAT_R8G8B8A8_UNORM: bytes = 4; break;
 +        case VK_FORMAT_R32G32_SFLOAT: bytes = 8; break;
 +        case VK_FORMAT_R32G32B32_SFLOAT: bytes = 12; break;
 +        case VK_FORMAT_R32G32B32A32_SFLOAT: bytes = 16; break;
@@ -719,7 +733,7 @@ index 168c1f3..f9405be 100644
  
      /* Always set instance count to avoid state leak from previous draw */
      sceGnmDrawCmdSetNumInstances(&cmd->gnm_cmd, instanceCount);
-@@ -1527,19 +1667,14 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
+@@ -1527,19 +1671,14 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
                        uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
@@ -746,7 +760,7 @@ index 168c1f3..f9405be 100644
  
      /* Always set instance count to avoid state leak from previous draw */
      sceGnmDrawCmdSetNumInstances(&cmd->gnm_cmd, instanceCount);
-@@ -1595,6 +1730,13 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
+@@ -1595,6 +1734,13 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
       * vertexOffset is handled by the shader via gl_VertexIndex user-data. */
      VkPs4Buffer *buf = (VkPs4Buffer *)cmd->index_buffer.buffer;
      if (buf && buf->memory && buf->memory->gnm_mem.mapped) {
@@ -760,7 +774,7 @@ index 168c1f3..f9405be 100644
          void *gpu_addr = (char *)buf->memory->gnm_mem.mapped + buf->memory_offset +
                           cmd->index_buffer.offset;
          GnmDrawModifier mod = {0};
-@@ -1605,8 +1747,8 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
+@@ -1605,8 +1751,8 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
              sceGnmDrawCmdDrawIndex2(&cmd->gnm_cmd, indexCount, gpu_addr, mod);
          }
      } else {
@@ -771,7 +785,7 @@ index 168c1f3..f9405be 100644
      }
  }
  
-@@ -1617,18 +1759,7 @@ vk_ps4_CmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceS
+@@ -1617,18 +1763,7 @@ vk_ps4_CmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceS
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      VkPs4Buffer *buf = (VkPs4Buffer *)buffer;
  
@@ -791,7 +805,7 @@ index 168c1f3..f9405be 100644
  
      if (!buf->memory || !buf->memory->gnm_mem.mapped) return;
  
-@@ -1660,18 +1791,7 @@ vk_ps4_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, Vk
+@@ -1660,18 +1795,7 @@ vk_ps4_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, Vk
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      VkPs4Buffer *buf = (VkPs4Buffer *)buffer;
  
@@ -811,10 +825,113 @@ index 168c1f3..f9405be 100644
  
      if (!buf->memory || !buf->memory->gnm_mem.mapped) return;
  
-@@ -1875,6 +1995,45 @@ vk_ps4_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayo
+@@ -1865,6 +1989,9 @@ vk_ps4_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
+     }
+ }
+ 
++VKAPI_ATTR void VKAPI_CALL vk_ps4_CmdCopyImageToBuffer(VkCommandBuffer, VkImage,
++    VkImageLayout, VkBuffer, uint32_t, const VkBufferImageCopy *);
++
+ VKAPI_ATTR void VKAPI_CALL
+ vk_ps4_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayout srcImageLayout,
+                     VkImage dstImage, VkImageLayout dstImageLayout,
+@@ -1875,6 +2002,138 @@ vk_ps4_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayo
      VkPs4Image *dst = (VkPs4Image *)dstImage;
      if (!src || !dst) return;
  
++    /* Copy complete, matching single-mip D32 depth surfaces. */
++    if (src->is_depth_target && src->memory && dst->memory && regionCount == 1 &&
++        src->create_info.format == dst->create_info.format &&
++        src->create_info.format == VK_FORMAT_D32_SFLOAT) {
++        const VkImageCopy *r = pRegions;
++        if (!src->memory->gnm_mem.mapped || !dst->memory->gnm_mem.mapped ||
++            src->create_info.mipLevels != 1 || dst->create_info.mipLevels != 1 ||
++            src->create_info.arrayLayers != 1 || dst->create_info.arrayLayers != 1 ||
++            src->create_info.samples != VK_SAMPLE_COUNT_1_BIT || dst->create_info.samples != VK_SAMPLE_COUNT_1_BIT ||
++            !(src->create_info.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) ||
++            !(dst->create_info.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) ||
++            srcImageLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL || dstImageLayout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ||
++            r->srcSubresource.aspectMask != VK_IMAGE_ASPECT_DEPTH_BIT || r->dstSubresource.aspectMask != VK_IMAGE_ASPECT_DEPTH_BIT ||
++            r->srcSubresource.mipLevel || r->dstSubresource.mipLevel ||
++            r->srcSubresource.baseArrayLayer || r->dstSubresource.baseArrayLayer ||
++            r->srcSubresource.layerCount != 1 || r->dstSubresource.layerCount != 1 ||
++            r->srcOffset.x < 0 || r->srcOffset.y < 0 || r->srcOffset.z ||
++            r->dstOffset.x < 0 || r->dstOffset.y < 0 || r->dstOffset.z ||
++            !r->extent.width || !r->extent.height || r->extent.depth != 1 ||
++            (uint64_t)r->srcOffset.x+r->extent.width > src->create_info.extent.width ||
++            (uint64_t)r->srcOffset.y+r->extent.height > src->create_info.extent.height ||
++            (uint64_t)r->dstOffset.x+r->extent.width > dst->create_info.extent.width ||
++            (uint64_t)r->dstOffset.y+r->extent.height > dst->create_info.extent.height ||
++            src->memory_offset > src->memory->size || dst->memory_offset > dst->memory->size) {
++            cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return;
++        }
++        GpaTextureInfo info[2] = {sceGnmTexBuildInfo(&src->gnm_texture),sceGnmTexBuildInfo(&dst->gnm_texture)};
++        GpaTilingParams tp[2] = {0}; GpaSurfaceContext ctx[2] = {0};
++        uint64_t size[2] = {0};
++        uint64_t available[2] = {src->memory->size-src->memory_offset,dst->memory->size-dst->memory_offset};
++        for (unsigned i=0;i<2;++i) {
++            if (sceGpaComputeSurfaceSizeOffset(&size[i],NULL,&info[i],0,0) != GPA_ERR_OK ||
++                !size[i] || size[i] > available[i] || size[i] > 16*1024*1024 || (size[i]&3) ||
++                sceGpaTpInit(&tp[i],&info[i],0,0) != GPA_ERR_OK ||
++                sceGpaInitSurfaceContext(&ctx[i],size[i],&tp[i]) != GPA_ERR_OK) {
++                cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return;
++            }
++        }
++        /* Identical depth tile layouts need no coordinate conversion. */
++        if (!r->srcOffset.x && !r->srcOffset.y && !r->dstOffset.x && !r->dstOffset.y &&
++            r->extent.width==src->create_info.extent.width && r->extent.height==src->create_info.extent.height &&
++            r->extent.width==dst->create_info.extent.width && r->extent.height==dst->create_info.extent.height &&
++            info[0].pitch==info[1].pitch && info[0].tm==info[1].tm && size[0]==size[1]) {
++            if (!sceGnmDrawCmdCopyMemory(&cmd->gnm_cmd,
++                (uint64_t)dst->memory->gnm_mem.mapped+dst->memory_offset,
++                (uint64_t)src->memory->gnm_mem.mapped+src->memory_offset,(uint32_t)size[0]))
++                cmd->resource_error=VK_ERROR_OUT_OF_DEVICE_MEMORY;
++            return;
++        }
++        vk_ps4_log("unsupported depth copy: differing tile layout or partial region");
++        cmd->resource_error=VK_ERROR_FEATURE_NOT_PRESENT;
++        return;
++    }
++
++    /* Bounded 1:1 RGBA8 presentation. Reuse GPU detiling into the linear
++     * VideoOut backing allocation; stack wrappers only describe the memory
++     * while recording and are never retained by the command buffer. */
++    if (dst->is_swapchain_image && regionCount == 1 && dst->swapchain_address &&
++        src->create_info.format == VK_FORMAT_R8G8B8A8_UNORM &&
++        dst->create_info.format == VK_FORMAT_R8G8B8A8_UNORM &&
++        (dst->create_info.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) &&
++        dstImageLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
++        const VkImageCopy *r = pRegions;
++        GpaTextureInfo di = sceGnmRtBuildInfo(&dst->gnm_rt);
++        if (di.tm == GNM_TM_DISPLAY_LINEAR_GENERAL &&
++            !r->srcOffset.x && !r->srcOffset.y && !r->srcOffset.z &&
++            !r->dstOffset.x && !r->dstOffset.y && !r->dstOffset.z &&
++            r->srcSubresource.aspectMask == VK_IMAGE_ASPECT_COLOR_BIT &&
++            r->dstSubresource.aspectMask == VK_IMAGE_ASPECT_COLOR_BIT &&
++            !r->srcSubresource.mipLevel && !r->dstSubresource.mipLevel &&
++            !r->srcSubresource.baseArrayLayer && !r->dstSubresource.baseArrayLayer &&
++            r->srcSubresource.layerCount == 1 && r->dstSubresource.layerCount == 1 &&
++            r->extent.depth == 1 && r->extent.width == dst->create_info.extent.width &&
++            r->extent.height == dst->create_info.extent.height && di.pitch >= r->extent.width) {
++            VkPs4DeviceMemory memory = {0};
++            memory.size = dst->swapchain_size;
++            memory.gnm_mem.mapped = dst->swapchain_address;
++            VkPs4Buffer buffer = {0};
++            buffer.memory = &memory;
++            buffer.create_info.size = memory.size;
++            buffer.create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
++            VkBufferImageCopy copy = {0};
++            copy.bufferRowLength = di.pitch;
++            copy.imageSubresource = r->srcSubresource;
++            copy.imageExtent = r->extent;
++            sceGnmDrawCmdWaitUntilSafeForRendering(&cmd->gnm_cmd,
++                dst->video_out_handle, dst->swapchain_buffer_index);
++            vk_ps4_CmdCopyImageToBuffer(commandBuffer, srcImage, srcImageLayout,
++                (VkBuffer)&buffer, 1, &copy);
++            return;
++        }
++    }
++
 +    /* A whole single-mip image with identical GNM layout is a bounded raw
 +     * GPU copy, including tile padding. Linear row pitches corrupt tiled RTs. */
 +    if (regionCount == 1 && src->memory && dst->memory &&
@@ -857,7 +974,7 @@ index 168c1f3..f9405be 100644
      /* Linear-to-linear image copy via per-row CopyMemory.
       * Tiled texture copies require a shader-based blit or CP DMA with
       * surface info — deferred to a future shader-blit phase. */
-@@ -2046,117 +2205,225 @@ vk_ps4_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, V
+@@ -2046,117 +2305,225 @@ vk_ps4_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, V
      if (!src || !dst || !src->memory || !dst->memory) return;
      if (!src->memory->gnm_mem.mapped || !dst->memory->gnm_mem.mapped) return;
  
@@ -1176,7 +1293,7 @@ index 168c1f3..f9405be 100644
  /* === Render pass commands === */
  
  /* Check if attachment `att_idx` is used by subpass `subpass` (via any
-@@ -2318,7 +2585,9 @@ vk_ps4_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBegin
+@@ -2318,7 +2685,9 @@ vk_ps4_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBegin
                  sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
  
                  /* Trigger the lazy clear with a fullscreen draw. */
@@ -1187,7 +1304,7 @@ index 168c1f3..f9405be 100644
  
              } else if (view->image->is_render_target) {
                  const VkClearColorValue *cc =
-@@ -2341,13 +2610,7 @@ vk_ps4_CmdEndRenderPass(VkCommandBuffer commandBuffer) {
+@@ -2341,13 +2710,7 @@ vk_ps4_CmdEndRenderPass(VkCommandBuffer commandBuffer) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1202,7 +1319,7 @@ index 168c1f3..f9405be 100644
      GnmDbRenderControl db_ctrl;
      memset(&db_ctrl, 0, sizeof(db_ctrl));
      db_ctrl.depthclearenable = 0;
-@@ -2460,7 +2723,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
+@@ -2460,7 +2823,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
                          db_ctrl.depthclearenable = has_depth ? 1 : 0;
                          db_ctrl.stencilclearenable = has_stencil ? 1 : 0;
                          sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
@@ -1213,7 +1330,7 @@ index 168c1f3..f9405be 100644
                      }
                  }
              }
-@@ -2492,7 +2757,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
+@@ -2492,7 +2857,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
                          db_ctrl.depthclearenable = has_depth ? 1 : 0;
                          db_ctrl.stencilclearenable = has_stencil ? 1 : 0;
                          sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
@@ -1224,7 +1341,7 @@ index 168c1f3..f9405be 100644
                      }
                  }
              }
-@@ -2516,19 +2783,42 @@ vk_ps4_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sr
+@@ -2516,19 +2883,42 @@ vk_ps4_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sr
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1277,7 +1394,7 @@ index 168c1f3..f9405be 100644
  
      (void)srcStageMask;
      (void)dstStageMask;
-@@ -2609,117 +2899,57 @@ VKAPI_ATTR void VKAPI_CALL
+@@ -2609,117 +2999,57 @@ VKAPI_ATTR void VKAPI_CALL
  vk_ps4_CmdClearColorImage(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout,
                            const VkClearColorValue *pColor, uint32_t rangeCount,
                            const VkImageSubresourceRange *pRanges) {
@@ -1444,7 +1561,7 @@ index 168c1f3..f9405be 100644
  }
  
  VKAPI_ATTR void VKAPI_CALL
-@@ -2756,7 +2986,9 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
+@@ -2756,7 +3086,9 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
          0, 0,
          img->create_info.extent.width,
          img->create_info.extent.height);
@@ -1455,7 +1572,7 @@ index 168c1f3..f9405be 100644
  
      /* Iterate ranges to validate bounds (API contract). The lazy clear
       * covers the entire target regardless of ranges. */
-@@ -2773,237 +3005,205 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
+@@ -2773,237 +3105,205 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
      (void)imageLayout;
  }
  
@@ -1488,11 +1605,6 @@ index 168c1f3..f9405be 100644
 -            if (has_depth) {
 -                sceGnmDrawCmdSetDepthClearValue(&cmd->gnm_cmd,
 -                    att->clearValue.depthStencil.depth);
--            }
--            if (has_stencil) {
--                vk_ps4_emit_context_reg(&cmd->gnm_cmd,
--                    R_028028_DB_STENCIL_CLEAR,
--                    S_028028_CLEAR(att->clearValue.depthStencil.stencil));
 +        if (att->aspectMask && !(att->aspectMask & ~(VK_IMAGE_ASPECT_DEPTH_BIT|VK_IMAGE_ASPECT_STENCIL_BIT))) {
 +            uint32_t idx = vk_ps4_subpass_depth_attachment(cmd);
 +            VkPs4ImageView *view = vk_ps4_get_attachment_view(cmd, idx);
@@ -1515,6 +1627,11 @@ index 168c1f3..f9405be 100644
 +                vk_ps4_clear_depth_draw(&cmd->gnm_cmd, ctrl.depthclearenable);
 +                memset(&ctrl,0,sizeof(ctrl)); sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd,&ctrl);
              }
+-            if (has_stencil) {
+-                vk_ps4_emit_context_reg(&cmd->gnm_cmd,
+-                    R_028028_DB_STENCIL_CLEAR,
+-                    S_028028_CLEAR(att->clearValue.depthStencil.stencil));
+-            }
 -
 -            GnmDbRenderControl db_ctrl;
 -            memset(&db_ctrl, 0, sizeof(db_ctrl));
@@ -1873,7 +1990,7 @@ index 168c1f3..f9405be 100644
  
  /* Query commands moved to vk_ps4_query.c */
 diff --git a/src/vk_ps4_descriptor.c b/src/vk_ps4_descriptor.c
-index c9d6e1c..a33067e 100644
+index c9d6e1c..6afab5a 100644
 --- a/src/vk_ps4_descriptor.c
 +++ b/src/vk_ps4_descriptor.c
 @@ -20,6 +20,8 @@
@@ -1885,7 +2002,34 @@ index c9d6e1c..a33067e 100644
  
  /* === Descriptor set layout === */
  /* (Already implemented in vk_ps4_pipeline.c) */
-@@ -414,331 +416,76 @@ vk_ps4_UpdateDescriptorSets(VkDevice device, uint32_t descriptorWriteCount,
+@@ -294,6 +296,15 @@ vk_ps4_UpdateDescriptorSets(VkDevice device, uint32_t descriptorWriteCount,
+             for (uint32_t j = 0; j < count; j++) {
+                 const VkDescriptorBufferInfo *bi = &w->pBufferInfo[j];
+                 VkPs4Buffer *vk_buf = (VkPs4Buffer *)bi->buffer;
++                if (b->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
++                    b->dynamic_valid = vk_buf && vk_buf->memory && vk_buf->memory->gnm_mem.mapped &&
++                        vk_buf->memory_offset <= vk_buf->memory->size &&
++                        vk_buf->create_info.size <= vk_buf->memory->size-vk_buf->memory_offset &&
++                        bi->offset <= vk_buf->create_info.size && bi->range != 0 &&
++                        (bi->range == VK_WHOLE_SIZE || bi->range <= vk_buf->create_info.size-bi->offset);
++                    b->dynamic_max_offset = b->dynamic_valid && bi->range != VK_WHOLE_SIZE ?
++                        vk_buf->create_info.size-bi->offset-bi->range : 0;
++                }
+                 if (!vk_buf) {
+                     memset(&b->buffers[dst_start + j], 0, sizeof(GnmBuffer));
+                     continue;
+@@ -398,6 +409,10 @@ vk_ps4_UpdateDescriptorSets(VkDevice device, uint32_t descriptorWriteCount,
+         if (c->srcArrayElement + count > sb->count)
+             count = sb->count - c->srcArrayElement;
+ 
++        if (db->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC && db->type == sb->type) {
++            db->dynamic_valid = sb->dynamic_valid;
++            db->dynamic_max_offset = sb->dynamic_max_offset;
++        }
+         if (db->buffers && sb->buffers) {
+             memcpy(&db->buffers[c->dstArrayElement],
+                    &sb->buffers[c->srcArrayElement],
+@@ -414,331 +429,114 @@ vk_ps4_UpdateDescriptorSets(VkDevice device, uint32_t descriptorWriteCount,
                     count * sizeof(GnmSampler));
          }
      }
@@ -1921,7 +2065,7 @@ index c9d6e1c..a33067e 100644
 +vk_ps4_CmdBindDescriptorSets(VkCommandBuffer commandBuffer, VkPipelineBindPoint point,
 +    VkPipelineLayout layout, uint32_t firstSet, uint32_t count, const VkDescriptorSet *sets,
 +    uint32_t dynamicCount, const uint32_t *offsets) {
-+    (void)layout; (void)offsets;
++    (void)layout;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
 -    VkPs4PipelineLayout *pl = (VkPs4PipelineLayout *)layout;
 -    if (!pl) return;
@@ -1974,12 +2118,33 @@ index c9d6e1c..a33067e 100644
 -                    dyn_map_count++;
 -                }
 -                dyn_off_consumed++;
--            }
--        }
-+    if (point != VK_PIPELINE_BIND_POINT_GRAPHICS || firstSet > 2 || count > 2-firstSet || dynamicCount) {
++    if (point != VK_PIPELINE_BIND_POINT_GRAPHICS || firstSet > 2 || count > 2-firstSet ||
++        (count && !sets) || (dynamicCount && !offsets)) {
 +        cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return;
++    }
++    uint32_t pending[2][16] = {{0}};
++    uint32_t cursor = 0;
++    for (uint32_t i = 0; i < count; ++i) {
++        VkPs4DescriptorSet *set = (VkPs4DescriptorSet *)sets[i];
++        if (!set) { cmd->resource_error = VK_ERROR_INITIALIZATION_FAILED; return; }
++        /* Vulkan orders offsets by set, then ascending binding, not creation order. */
++        for (unsigned number = 0; number < 16; ++number) {
++            VkPs4DescriptorBinding *b = find_binding(set, number);
++            if (!b || b->type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) continue;
++            if (cursor >= dynamicCount || !b->dynamic_valid ||
++                offsets[cursor] > b->dynamic_max_offset || (offsets[cursor] & 255)) {
++                cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return;
+             }
++            pending[i][number] = offsets[cursor++];
+         }
      }
--
++    if (cursor != dynamicCount) { cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return; }
++    for (uint32_t i = 0; i < count; ++i) {
++        cmd->graphics_sets[firstSet+i] = (VkPs4DescriptorSet *)sets[i];
++        memcpy(cmd->graphics_dynamic_offsets[firstSet+i], pending[i], sizeof pending[i]);
++    }
++}
+ 
 -    /* Helper to look up a dynamic offset for a given (set_idx, binding) */
 -    /* (defined as a lambda-like macro for brevity) */
 -
@@ -2014,7 +2179,33 @@ index c9d6e1c..a33067e 100644
 -                            break;
 -                        }
 -                    }
--                }
++bool vk_ps4_emit_resource_table(VkPs4CommandBuffer *cmd) {
++    if (cmd->resource_error != VK_SUCCESS) return false;
++    VkPs4Pipeline *p = cmd->current_pipeline;
++    if (!p) return false;
++    for (unsigned stage = 0; stage < 2; ++stage) {
++        const GnmInputUsageSlot *slots = stage ? p->ps_input_usage_slots : p->vs_input_usage_slots;
++        uint32_t count = stage ? p->ps_input_usage_slot_count : p->vs_input_usage_slot_count;
++        for (uint32_t i = 0; i < count; ++i) {
++            if (slots[i].usagetype != GNM_SHINPUTUSAGE_PTR_INDIRECTRESOURCETABLE) continue;
++            unsigned set_index = slots[i].apislot;
++            if (set_index >= 2 || !cmd->graphics_sets[set_index]) { cmd->resource_error = VK_ERROR_INITIALIZATION_FAILED; return false; }
++            void *table = cmd->graphics_sets[set_index]->resource_table.mapped;
++            VkShaderStageFlags bit = stage ? VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_VERTEX_BIT;
++            VkPs4DescriptorSet *set = cmd->graphics_sets[set_index];
++            bool dynamic = false;
++            for (unsigned b=0; b<set->binding_count; ++b)
++                dynamic |= set->bindings[b].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
++            if (dynamic || (set_index == 0 && (p->push_stages & bit))) {
++                const unsigned table_bytes = PSBC_TEXTURE_TABLE_OFFSET + 16*PSBC_TEXTURE_BINDING_STRIDE;
++                const unsigned snapshot_bytes = table_bytes + 256;
++                const unsigned pool_bytes = 16*1024*1024;
++                if (cmd->push_snapshots_used > pool_bytes-snapshot_bytes ||
++                    (!cmd->push_snapshots.allocated && sceGnmDirectMemoryAllocate(&cmd->push_snapshots, pool_bytes, 65536,
++                     GNM_DIRECT_MEMORY_TYPE_WC_GARLIC, GNM_PROT_CPU_GPU_RW) != GNM_ERROR_OK)) {
++                    vk_ps4_log("push/resource snapshot arena exhausted: used=%u",cmd->push_snapshots_used);
++                    cmd->resource_error = VK_ERROR_OUT_OF_DEVICE_MEMORY; return false;
+                 }
 -                if (!b || b->count == 0) continue;
 -
 -                /* Check if this is a dynamic binding */
@@ -2063,7 +2254,15 @@ index c9d6e1c..a33067e 100644
 -                                );
 -                            }
 -                        }
--                    }
++                uint8_t *snapshot = (uint8_t *)cmd->push_snapshots.mapped + cmd->push_snapshots_used;
++                memcpy(snapshot, table, table_bytes);
++                for (unsigned b=0; b<set->binding_count; ++b) {
++                    VkPs4DescriptorBinding *binding = &set->bindings[b];
++                    if (binding->type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) continue;
++                    uint32_t offset = cmd->graphics_dynamic_offsets[set_index][binding->binding_number];
++                    if (!binding->dynamic_valid || offset > binding->dynamic_max_offset) {
++                        cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return false;
+                     }
 -                    break;
 -                case GNM_SHINPUTUSAGE_IMM_RESOURCE:
 -                case GNM_SHINPUTUSAGE_IMM_RWRESOURCE:
@@ -2119,7 +2318,10 @@ index c9d6e1c..a33067e 100644
 -                default:
 -                    /* Other usage types not handled in MVP */
 -                    break;
--                }
++                    GnmBuffer adjusted = binding->buffers[0];
++                    sceGnmBufSetBaseAddress(&adjusted, (char*)sceGnmBufGetBaseAddress(&adjusted)+offset);
++                    memcpy(snapshot+binding->binding_number*16, &adjusted, sizeof adjusted);
+                 }
 -            }
 -        }
 -    } else if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_COMPUTE) {
@@ -2143,8 +2345,14 @@ index c9d6e1c..a33067e 100644
 -                        found_set_idx = firstSet + si;
 -                        break;
 -                    }
--                }
--            }
++                if (set_index == 0 && (p->push_stages & bit)) {
++                    memcpy(snapshot+table_bytes, cmd->push_bytes[stage], 256);
++                    GnmBuffer constants = sceGnmCreateConstBuffer(snapshot+table_bytes,256);
++                    memcpy(snapshot+15*16, &constants, sizeof constants);
+                 }
++                cmd->push_snapshots_used += snapshot_bytes;
++                table = snapshot;
+             }
 -            if (!b || b->count == 0) continue;
 -
 -            /* Check if this is a dynamic binding */
@@ -2231,43 +2439,11 @@ index c9d6e1c..a33067e 100644
 -                        &cmd->gnm_cmd, stage, slot->startregister,
 -                        b->samplers
 -                    );
-+    for (uint32_t i = 0; i < count; ++i)
-+        cmd->graphics_sets[firstSet+i] = (VkPs4DescriptorSet *)sets[i];
-+}
-+bool vk_ps4_emit_resource_table(VkPs4CommandBuffer *cmd) {
-+    if (cmd->resource_error != VK_SUCCESS) return false;
-+    VkPs4Pipeline *p = cmd->current_pipeline;
-+    if (!p) return false;
-+    for (unsigned stage = 0; stage < 2; ++stage) {
-+        const GnmInputUsageSlot *slots = stage ? p->ps_input_usage_slots : p->vs_input_usage_slots;
-+        uint32_t count = stage ? p->ps_input_usage_slot_count : p->vs_input_usage_slot_count;
-+        for (uint32_t i = 0; i < count; ++i) {
-+            if (slots[i].usagetype != GNM_SHINPUTUSAGE_PTR_INDIRECTRESOURCETABLE) continue;
-+            unsigned set_index = slots[i].apislot;
-+            if (set_index >= 2 || !cmd->graphics_sets[set_index]) { cmd->resource_error = VK_ERROR_INITIALIZATION_FAILED; return false; }
-+            void *table = cmd->graphics_sets[set_index]->resource_table.mapped;
-+            VkShaderStageFlags bit = stage ? VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_VERTEX_BIT;
-+            if (set_index == 0 && (p->push_stages & bit)) {
-+                const unsigned table_bytes = PSBC_TEXTURE_TABLE_OFFSET + 16*PSBC_TEXTURE_BINDING_STRIDE;
-+                const unsigned snapshot_bytes = table_bytes + 256;
-+                const unsigned pool_bytes = 16*1024*1024;
-+                if (cmd->push_snapshots_used > pool_bytes-snapshot_bytes ||
-+                    (!cmd->push_snapshots.allocated && sceGnmDirectMemoryAllocate(&cmd->push_snapshots, pool_bytes, 65536,
-+                     GNM_DIRECT_MEMORY_TYPE_WC_GARLIC, GNM_PROT_CPU_GPU_RW) != GNM_ERROR_OK)) {
-+                    vk_ps4_log("push/resource snapshot arena exhausted: used=%u",cmd->push_snapshots_used);
-+                    cmd->resource_error = VK_ERROR_OUT_OF_DEVICE_MEMORY; return false;
-                 }
+-                }
 -                break;
 -            default:
 -                break;
-+                uint8_t *snapshot = (uint8_t *)cmd->push_snapshots.mapped + cmd->push_snapshots_used;
-+                memcpy(snapshot, table, table_bytes);
-+                memcpy(snapshot+table_bytes, cmd->push_bytes[stage], 256);
-+                GnmBuffer constants = sceGnmCreateConstBuffer(snapshot+table_bytes,256);
-+                memcpy(snapshot+15*16, &constants, sizeof constants);
-+                cmd->push_snapshots_used += snapshot_bytes;
-+                table = snapshot;
-             }
+-            }
 +            sceGnmDrawCmdSetPointerUserData(&cmd->gnm_cmd, stage ? GNM_STAGE_PS : GNM_STAGE_VS,
 +                slots[i].startregister, table);
          }
@@ -2425,13 +2601,31 @@ index 408e783..8523567 100644
      { VK_FORMAT_D32_SFLOAT_S8_UINT, FMT(32, FLOAT, X, CONSTANT0, CONSTANT0, CONSTANT1), FMT_DEPTH },
  
 diff --git a/src/vk_ps4_image.c b/src/vk_ps4_image.c
-index 6545469..fb15173 100644
+index 6545469..087f9cf 100644
 --- a/src/vk_ps4_image.c
 +++ b/src/vk_ps4_image.c
-@@ -35,9 +35,37 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
+@@ -25,7 +25,12 @@ static bool vk_image_is_color_target(const VkImageCreateInfo *ci) {
+ }
+ 
+ static bool vk_image_is_depth(const VkImageCreateInfo *ci) {
+-    return (ci->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
++    return (ci->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0 ||
++        (!(ci->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) &&
++         ci->imageType == VK_IMAGE_TYPE_2D && ci->mipLevels == 1 && ci->arrayLayers == 1 &&
++         ci->tiling == VK_IMAGE_TILING_OPTIMAL &&
++         ci->format == VK_FORMAT_D32_SFLOAT &&
++         ci->usage == (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT));
+ }
+ 
+ VKAPI_ATTR VkResult VKAPI_CALL
+@@ -35,9 +40,41 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
          return VK_ERROR_INITIALIZATION_FAILED;
      }
  
++    /* D32S8 sampling/capture has not passed the GPU image test. */
++    if (pCreateInfo->format == VK_FORMAT_D32_SFLOAT_S8_UINT &&
++        (pCreateInfo->usage & VK_IMAGE_USAGE_SAMPLED_BIT)) return VK_ERROR_FEATURE_NOT_PRESENT;
++
 +    // Multisample storage/resolve has not been implemented by this ICD.
 +    if (pCreateInfo->samples != VK_SAMPLE_COUNT_1_BIT) return VK_ERROR_FEATURE_NOT_PRESENT;
 +    const bool cube = (pCreateInfo->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) != 0;
@@ -2466,7 +2660,7 @@ index 6545469..fb15173 100644
      VkPs4Image *img = vk_ps4_alloc_zero(alloc, sizeof(*img), 16);
      if (!img) return VK_ERROR_OUT_OF_HOST_MEMORY;
      img->type = VK_PS4_OBJ_IMAGE;
-@@ -109,18 +137,17 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
+@@ -109,18 +146,17 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
          drt_ci.numslices = pCreateInfo->arrayLayers;
          drt_ci.zfmt = zfmt;
          drt_ci.stencilfmt = sfmt;
@@ -2490,7 +2684,7 @@ index 6545469..fb15173 100644
          GnmTextureCreateInfo tex_ci;
          memset(&tex_ci, 0, sizeof(tex_ci));
          tex_ci.format = gnm_fmt;
-@@ -131,22 +158,28 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
+@@ -131,22 +167,28 @@ vk_ps4_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
          tex_ci.nummiplevels = mip_levels;
          tex_ci.numslices = pCreateInfo->arrayLayers;
          tex_ci.numfragments = 1;
@@ -2524,7 +2718,7 @@ index 6545469..fb15173 100644
          tex_ci.mingpumode = gpu_mode;
  
          GnmError err = sceGnmCreateTexture(&img->gnm_texture, &tex_ci);
-@@ -175,7 +208,11 @@ vk_ps4_GetImageMemoryRequirements(VkDevice device, VkImage image, VkMemoryRequir
+@@ -175,7 +217,11 @@ vk_ps4_GetImageMemoryRequirements(VkDevice device, VkImage image, VkMemoryRequir
      if (!image || !pMemoryRequirements) return;
      VkPs4Image *img = (VkPs4Image *)image;
  
@@ -2537,7 +2731,7 @@ index 6545469..fb15173 100644
          uint64_t size = 0;
          uint32_t align = 0;
          sceGnmRtCalcByteSize(&size, &align, &img->gnm_rt);
-@@ -226,7 +263,15 @@ vk_ps4_BindImageMemory(VkDevice device, VkImage image, VkDeviceMemory memory, Vk
+@@ -226,7 +272,15 @@ vk_ps4_BindImageMemory(VkDevice device, VkImage image, VkDeviceMemory memory, Vk
  
      void *gpu_addr = (char *)mem->gnm_mem.mapped + offset;
  
@@ -2554,13 +2748,14 @@ index 6545469..fb15173 100644
          sceGnmRtSetBaseAddr(&img->gnm_rt, gpu_addr);
      } else {
          sceGnmTexSetBaseAddress(&img->gnm_texture, gpu_addr);
-@@ -254,6 +299,42 @@ vk_ps4_CreateImageView(VkDevice device, const VkImageViewCreateInfo *pCreateInfo
+@@ -254,6 +308,43 @@ vk_ps4_CreateImageView(VkDevice device, const VkImageViewCreateInfo *pCreateInfo
          vk_ps4_free(alloc, view);
          return VK_ERROR_INITIALIZATION_FAILED;
      }
 +    if (view->image->is_depth_target &&
 +        (view->image->create_info.usage & VK_IMAGE_USAGE_SAMPLED_BIT) &&
 +        (pCreateInfo->viewType != VK_IMAGE_VIEW_TYPE_2D ||
++         pCreateInfo->format != view->image->create_info.format ||
 +         pCreateInfo->format != VK_FORMAT_D32_SFLOAT ||
 +         pCreateInfo->subresourceRange.aspectMask != VK_IMAGE_ASPECT_DEPTH_BIT ||
 +         pCreateInfo->subresourceRange.baseMipLevel != 0 ||
@@ -2597,7 +2792,7 @@ index 6545469..fb15173 100644
      view->create_info = *pCreateInfo;
  
      /* For texture images, copy the texture descriptor.
-@@ -314,7 +395,8 @@ vk_ps4_GetImageSubresourceLayout(VkDevice device, VkImage image,
+@@ -314,7 +405,8 @@ vk_ps4_GetImageSubresourceLayout(VkDevice device, VkImage image,
      /* For linear textures, row pitch = width * bytes_per_pixel */
      uint32_t bpp = 4;
      pLayout->offset = 0;
@@ -2608,9 +2803,20 @@ index 6545469..fb15173 100644
      pLayout->size = pLayout->depthPitch * img->create_info.extent.depth;
  }
 diff --git a/src/vk_ps4_instance.c b/src/vk_ps4_instance.c
-index 8b2a112..e46b861 100644
+index 8b2a112..62b7398 100644
 --- a/src/vk_ps4_instance.c
 +++ b/src/vk_ps4_instance.c
+@@ -85,8 +85,8 @@ vk_ps4_CreateInstance(
+     phys->features.fullDrawIndexUint32 = VK_TRUE;
+     phys->features.imageCubeArray = VK_TRUE;
+     phys->features.independentBlend = VK_TRUE;
+-    phys->features.geometryShader = VK_TRUE;
+-    phys->features.tessellationShader = VK_TRUE;
++    phys->features.geometryShader = VK_FALSE; /* No geometry pipeline binding yet. */
++    phys->features.tessellationShader = VK_FALSE; /* Graphics resource tables support VS/FS only. */
+     phys->features.sampleRateShading = VK_TRUE;
+     phys->features.dualSrcBlend = VK_TRUE;
+     phys->features.logicOp = VK_TRUE;
 @@ -226,22 +226,15 @@ vk_ps4_CreateInstance(
      l->maxFramebufferWidth = 4096;
      l->maxFramebufferHeight = 4096;
@@ -2669,7 +2875,7 @@ index cc18546..f63989e 100644
 +    return VK_SUCCESS;
 +}
 diff --git a/src/vk_ps4_pipeline.c b/src/vk_ps4_pipeline.c
-index b621e66..d7b7e9a 100644
+index b621e66..5016b64 100644
 --- a/src/vk_ps4_pipeline.c
 +++ b/src/vk_ps4_pipeline.c
 @@ -10,6 +10,7 @@
@@ -2912,7 +3118,7 @@ index b621e66..d7b7e9a 100644
      VkPs4PipelineLayout *layout = vk_ps4_alloc_zero(alloc, sizeof(*layout), 16);
      if (!layout) return VK_ERROR_OUT_OF_HOST_MEMORY;
      layout->type = VK_PS4_OBJ_PIPELINE_LAYOUT;
-@@ -915,6 +963,24 @@ vk_ps4_DestroyPipelineLayout(VkDevice device, VkPipelineLayout pipelineLayout, c
+@@ -915,6 +963,25 @@ vk_ps4_DestroyPipelineLayout(VkDevice device, VkPipelineLayout pipelineLayout, c
  
  /* === Descriptor set layout === */
  
@@ -2926,6 +3132,7 @@ index b621e66..d7b7e9a 100644
 +        if (b->binding >= 16 || b->descriptorCount != 1 || b->pImmutableSamplers ||
 +            (b->stageFlags & ~(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)) ||
 +            (b->descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER &&
++             b->descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC &&
 +             b->descriptorType != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER))
 +            return false;
 +        if (seen & (1u << b->binding)) return false;
@@ -2937,7 +3144,7 @@ index b621e66..d7b7e9a 100644
  VKAPI_ATTR VkResult VKAPI_CALL
  vk_ps4_CreateDescriptorSetLayout(VkDevice device, const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
                                   const VkAllocationCallbacks *pAllocator, VkDescriptorSetLayout *pSetLayout) {
-@@ -925,6 +991,11 @@ vk_ps4_CreateDescriptorSetLayout(VkDevice device, const VkDescriptorSetLayoutCre
+@@ -925,6 +992,11 @@ vk_ps4_CreateDescriptorSetLayout(VkDevice device, const VkDescriptorSetLayoutCre
      VkPs4Device *dev = (VkPs4Device *)device;
      const VkAllocationCallbacks *alloc = pAllocator ? pAllocator : &dev->allocator;
  
@@ -2949,7 +3156,7 @@ index b621e66..d7b7e9a 100644
      VkPs4DescriptorSetLayout *layout = vk_ps4_alloc_zero(alloc, sizeof(*layout), 16);
      if (!layout) return VK_ERROR_OUT_OF_HOST_MEMORY;
      layout->type = VK_PS4_OBJ_DESCRIPTOR_SET_LAYOUT;
-@@ -1018,151 +1089,95 @@ vk_ps4_CreateDescriptorPool(VkDevice device, const VkDescriptorPoolCreateInfo *p
+@@ -1018,151 +1090,96 @@ vk_ps4_CreateDescriptorPool(VkDevice device, const VkDescriptorPoolCreateInfo *p
      return VK_SUCCESS;
  }
  
@@ -3148,7 +3355,8 @@ index b621e66..d7b7e9a 100644
 +            VkPs4DescriptorBinding *dst = &set->bindings[b];
 +            dst->binding_number = set->layout->bindings[b].binding;
 +            dst->type = set->layout->bindings[b].descriptorType; dst->count = 1;
-+            if (dst->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
++            if (dst->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
++                dst->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
 +                dst->buffers = vk_ps4_alloc_zero(&dev->allocator, sizeof(GnmBuffer), 16);
 +                if (!dst->buffers) { release_set(set); goto fail; }
 +            } else {
@@ -3329,7 +3537,7 @@ index 683667b..6500253 100644
              /* Poll until the GPU writes the label. */
              while (*idle_label != 1) {
 diff --git a/src/vk_ps4_shader.c b/src/vk_ps4_shader.c
-index 151a536..3c95a7b 100644
+index 151a536..fda2298 100644
 --- a/src/vk_ps4_shader.c
 +++ b/src/vk_ps4_shader.c
 @@ -10,6 +10,7 @@
@@ -3361,7 +3569,7 @@ index 151a536..3c95a7b 100644
 +        for (uint32_t i = 0; i < set->binding_count; ++i) {
 +            const VkDescriptorSetLayoutBinding *b = &set->bindings[i];
 +            if (!(b->stageFlags & stage)) continue;
-+            if (b->descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
++            if ((b->descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || b->descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC))
 +                *uniforms |= 1u << b->binding;
 +            else if (b->descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
 +                *textures |= 1u << b->binding;

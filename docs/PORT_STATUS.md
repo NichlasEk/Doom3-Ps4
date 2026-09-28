@@ -65,12 +65,13 @@ inspection at `3b6872fe278802496cc7a8f8209b847c68efed2a`. This can save
 shader translation and RHI design work. Its current Vulkan backend explicitly
 requires Vulkan 1.4, while the inspected `vulkan-ps4` driver reports Vulkan
 1.1. It is therefore a reference and possible donor for a reduced 1.1 backend,
-not a ready PS4 renderer. No DUDE code has been merged into this build.
+not a ready PS4 renderer. A separate graphical diagnostic now applies a PS4 patch to this pinned donor;
+see [client status](PS4_CLIENT.md).
 
 The graphics upgrade has started in an independent native stack in this project.
 [Upgrade status](VULKAN_UPGRADE.md) records the new memory-mapping entry points,
-feature negotiation, tests, and remaining Vulkan 1.4 requirements. It is not yet
-connected to the dedicated diagnostic or a graphical Doom client.
+feature negotiation, tests, and remaining Vulkan 1.4 requirements. It is now connected to a separate graphical DUDE client. The dedicated
+diagnostic remains separate; see [client status](PS4_CLIENT.md).
 
 Standalone PS4 graphics probes now run DUDE's unmodified generic GUI/material,
 ambient-light and direct-light (`interaction`) shader pairs in shadPS4. The
@@ -86,3 +87,11 @@ D32 attachment and samples it in DUDE's original projected-light pass. Its
 moving shadow, depth ordering and per-frame clearing match all 921600 pixels.
 Cube attachments, filtering/mips, integration into the graphical game client
 and physical PS4 verification remain. See [Vulkan upgrade status](VULKAN_UPGRADE.md).
+
+## Graphical menu checkpoint
+
+The graphical DUDE PS4 diagnostic now renders the real Doom 3 main menu in
+shadPS4 and completes 60 engine frames with guest exit 0 (64 presented frames
+including startup). See [build/run instructions, evidence and remaining
+defects](PS4_CLIENT.md). Controls, audio, map rendering and physical PS4 remain
+unverified; the tiled-color-clear pixel probe still fails.

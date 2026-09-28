@@ -1,11 +1,13 @@
 # Doom 3 PS4 port
 
-This repository ports [dhewm3](https://github.com/dhewm/dhewm3) toward PS4 with
-OpenOrbis. The current milestone is a **dedicated diagnostic**, not a graphical
-game build. It links the Doom 3 engine and base game code into a PS4 ELF. In
-shadPS4 it reads the owned retail game archives, compiles `doom_main.script`,
-runs 60 engine frames, and exits with guest status 0. See [port status](docs/PORT_STATUS.md)
-for the exact evidence and remaining work.
+This repository ports Doom 3 toward PS4 with OpenOrbis. A **graphical DUDE
+client diagnostic now renders the real main menu in shadPS4**, completes 60
+engine frames and exits cleanly. Gameplay, input, audio and physical PS4 remain
+unverified. See [graphical client instructions and known defects](docs/PS4_CLIENT.md).
+
+The separate [dhewm3](https://github.com/dhewm/dhewm3) dedicated diagnostic also
+reads retail archives, compiles `doom_main.script` and runs 60 engine frames.
+See [port status](docs/PORT_STATUS.md) for the earlier bring-up evidence.
 
 The three owned PC retail discs are kept locally under `media/original/`.
 Converted ISO images and extracted files live under `media/iso/` and

@@ -133,6 +133,26 @@ int main(void) {
         VK_NULL_HANDLE, 1, 2, bound, 0, NULL);
     assert(command.resource_error == VK_ERROR_FEATURE_NOT_PRESENT);
     puts("PASS: independent descriptor-set binding and out-of-range rejection");
+    VkPs4DescriptorBinding d0[2] = {
+        {.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,.count=1,.binding_number=11,.dynamic_valid=true,.dynamic_max_offset=1024},
+        {.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,.count=1,.binding_number=2,.dynamic_valid=true,.dynamic_max_offset=1024}};
+    VkPs4DescriptorBinding d1={.type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,.count=1,.binding_number=3,.dynamic_valid=true,.dynamic_max_offset=1024};
+    memcpy(set0.bindings,d0,sizeof d0); set0.binding_count=2;
+    set1.bindings[0]=d1; set1.binding_count=1;
+    uint32_t offsets[]={256,512,768};
+    command.resource_error=VK_SUCCESS;
+    vk_ps4_CmdBindDescriptorSets((VkCommandBuffer)&command,VK_PIPELINE_BIND_POINT_GRAPHICS,VK_NULL_HANDLE,0,2,bound,3,offsets);
+    assert(command.resource_error==VK_SUCCESS);
+    assert(command.graphics_dynamic_offsets[0][2]==256 && command.graphics_dynamic_offsets[0][11]==512);
+    assert(command.graphics_dynamic_offsets[1][3]==768);
+    for(unsigned bad=0;bad<3;++bad) {
+        command.resource_error=VK_SUCCESS;
+        offsets[0]=bad==0?128:(bad==1?1280:256);
+        vk_ps4_CmdBindDescriptorSets((VkCommandBuffer)&command,VK_PIPELINE_BIND_POINT_GRAPHICS,VK_NULL_HANDLE,0,2,bound,bad==2?2:3,offsets);
+        assert(command.resource_error==VK_ERROR_FEATURE_NOT_PRESENT);
+        assert(command.graphics_dynamic_offsets[0][2]==256);
+    }
+    puts("PASS: dynamic UBO offset order, independent sets, count/alignment/bounds rejection");
     uint32_t version = 0;
     assert(vk_ps4_EnumerateInstanceVersion(&version) == VK_SUCCESS);
     assert(version == VK_API_VERSION_1_1);

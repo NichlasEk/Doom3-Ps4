@@ -7,9 +7,31 @@ typedef struct ShadowCaster {
     VkShaderModule shaders[2];
     VkBuffer vertices;
     VkDeviceMemory memory;
+#ifdef PROBE_DEPTH_COPY
+    VkImage source;
+    VkImageView source_view;
+    VkDeviceMemory source_memory;
+#endif
 } ShadowCaster;
 static int setup_shadow_caster(VkDevice dev, VkImageView view,
                               const VkGraphicsPipelineCreateInfo *base, ShadowCaster *r) {
+#ifdef PROBE_DEPTH_COPY
+    VkImageCreateInfo ci={0}; ci.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType=VK_IMAGE_TYPE_2D; ci.format=VK_FORMAT_D32_SFLOAT;
+    ci.extent=(VkExtent3D){128,64,1}; ci.mipLevels=ci.arrayLayers=1;
+    ci.samples=VK_SAMPLE_COUNT_1_BIT; ci.tiling=VK_IMAGE_TILING_OPTIMAL;
+    ci.usage=VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+    CHECK(vkCreateImage(dev,&ci,NULL,&r->source));
+    VkMemoryRequirements req0; vkGetImageMemoryRequirements(dev,r->source,&req0);
+    VkMemoryAllocateInfo ai0={0}; ai0.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; ai0.allocationSize=req0.size;
+    CHECK(vkAllocateMemory(dev,&ai0,NULL,&r->source_memory));
+    CHECK(vkBindImageMemory(dev,r->source,r->source_memory,0));
+    VkImageViewCreateInfo vi0={0}; vi0.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    vi0.image=r->source; vi0.viewType=VK_IMAGE_VIEW_TYPE_2D; vi0.format=ci.format;
+    vi0.subresourceRange=(VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT,0,1,0,1};
+    CHECK(vkCreateImageView(dev,&vi0,NULL,&r->source_view));
+    view=r->source_view;
+#endif
     VkAttachmentDescription attachment={0};
     attachment.format=VK_FORMAT_D32_SFLOAT;
     attachment.samples=VK_SAMPLE_COUNT_1_BIT;
@@ -70,6 +92,9 @@ static int setup_shadow_caster(VkDevice dev, VkImageView view,
 static void draw_shadow_caster(VkCommandBuffer cmd, VkImage image, const ShadowCaster *r, unsigned frame) {
     VkImageMemoryBarrier barrier={0}; barrier.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.image=image;
+#ifdef PROBE_DEPTH_COPY
+    barrier.image=r->source;
+#endif
     barrier.subresourceRange=(VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT,0,1,0,1};
     barrier.srcQueueFamilyIndex=barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
     barrier.oldLayout=frame?VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED;
@@ -95,7 +120,27 @@ static void draw_shadow_caster(VkCommandBuffer cmd, VkImage image, const ShadowC
     VkDeviceSize offset=0; vkCmdBindVertexBuffers(cmd,0,1,&r->vertices,&offset);
     vkCmdDraw(cmd,12,1,0,0);
     vkCmdEndRenderPass(cmd);
+#ifdef PROBE_DEPTH_COPY
     barrier.oldLayout=VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcAccessMask=VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    barrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&barrier);
+    VkImageMemoryBarrier dst=barrier; dst.image=image;
+    dst.oldLayout=frame?VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED;
+    dst.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    dst.srcAccessMask=frame?VK_ACCESS_SHADER_READ_BIT:0; dst.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&dst);
+    VkImageCopy copy={0}; copy.srcSubresource=copy.dstSubresource=(VkImageSubresourceLayers){VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1};
+    copy.extent=(VkExtent3D){128,64,1};
+    vkCmdCopyImage(cmd,r->source,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&copy);
+    dst.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; dst.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    dst.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; dst.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&dst);
+    barrier.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+#else
+    barrier.oldLayout=VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+#endif
     barrier.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     barrier.srcAccessMask=VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     barrier.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
@@ -106,5 +151,10 @@ static void destroy_shadow_caster(VkDevice dev, ShadowCaster *r) {
     vkDestroyPipeline(dev,r->pipeline,NULL);
     for(unsigned i=0;i<2;++i) vkDestroyShaderModule(dev,r->shaders[i],NULL);
     vkDestroyFramebuffer(dev,r->framebuffer,NULL); vkDestroyRenderPass(dev,r->pass,NULL);
+#ifdef PROBE_DEPTH_COPY
+    vkDestroyImageView(dev,r->source_view,NULL);
+    vkDestroyImage(dev,r->source,NULL); vkFreeMemory(dev,r->source_memory,NULL);
+#endif
+
     vkDestroyBuffer(dev,r->vertices,NULL); vkFreeMemory(dev,r->memory,NULL);
 }

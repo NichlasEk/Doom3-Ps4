@@ -313,3 +313,12 @@ original DUDE light receiver. It does not yet load a Doom level or integrate
 the graphical client. Cube shadow attachments, compressed depth, larger scene
 workloads, filtered PCF and physical PS4 rendering remain unverified or
 unsupported. Vulkan 1.4 support remains incomplete.
+
+## Graphical client integration
+
+The private Vulkan 1.1 path is now connected to a separate DUDE PS4 client.
+Dynamic UBO snapshots, bounded depth-plane copies and 1:1 VideoOut transfers
+allow the real main menu to render in shadPS4. The menu diagnostic completes
+60 engine frames. This is not Vulkan 1.4 support or gameplay validation.
+See [client status](PS4_CLIENT.md), including the failing tiled-color-clear
+probe and the slow DMA-based presentation path.

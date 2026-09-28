@@ -127,6 +127,7 @@ int main(void) {
     sw_ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     sw_ci.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     sw_ci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    sw_ci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     sw_ci.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     sw_ci.clipped = VK_TRUE;
 
@@ -158,6 +159,9 @@ int main(void) {
     att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     att.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+#ifdef PROBE_PRESENT
+    att.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+#endif
 
     VkAttachmentReference ref = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
     VkSubpassDescription subpass = {0};
@@ -179,10 +183,31 @@ int main(void) {
     /* 8. Create image views + framebuffers */
     VkImageView *sw_views = malloc(sw_img_count * sizeof(*sw_views));
     VkFramebuffer *fbs = malloc(sw_img_count * sizeof(*fbs));
+#ifdef PROBE_PRESENT
+    VkImage *offscreen=calloc(sw_img_count,sizeof(*offscreen));
+    VkDeviceMemory *offscreen_memory=calloc(sw_img_count,sizeof(*offscreen_memory));
+#endif
     for (uint32_t i = 0; i < sw_img_count; i++) {
+#ifdef PROBE_PRESENT
+        VkImageCreateInfo ici={0};
+        ici.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        ici.imageType=VK_IMAGE_TYPE_2D; ici.format=VK_FORMAT_R8G8B8A8_UNORM;
+        ici.extent=(VkExtent3D){1280,720,1}; ici.mipLevels=ici.arrayLayers=1;
+        ici.samples=VK_SAMPLE_COUNT_1_BIT; ici.tiling=VK_IMAGE_TILING_OPTIMAL;
+        ici.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        CHECK(vkCreateImage(dev,&ici,NULL,&offscreen[i]));
+        VkMemoryRequirements req; vkGetImageMemoryRequirements(dev,offscreen[i],&req);
+        VkMemoryAllocateInfo ai={0}; ai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        ai.allocationSize=req.size;
+        CHECK(vkAllocateMemory(dev,&ai,NULL,&offscreen_memory[i]));
+        CHECK(vkBindImageMemory(dev,offscreen[i],offscreen_memory[i],0));
+#endif
         VkImageViewCreateInfo iv_ci = {0};
         iv_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         iv_ci.image = sw_images[i];
+#ifdef PROBE_PRESENT
+        iv_ci.image=offscreen[i];
+#endif
         iv_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
         iv_ci.format = VK_FORMAT_R8G8B8A8_UNORM;
         iv_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -394,6 +419,9 @@ int main(void) {
 #ifdef PROBE_DUDE_GENERIC
         if (i) binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 #endif
+#ifdef PROBE_DYNAMIC
+        if(i) binding.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+#endif
         ci.pBindings = &binding;
 #ifdef PROBE_LIGHTING
         VkDescriptorSetLayoutBinding light_bindings[LIGHT_IMAGES]={0};
@@ -417,6 +445,9 @@ int main(void) {
         VkBufferCreateInfo bi = {0};
         bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bi.size = uniform_bytes;
+#ifdef PROBE_DYNAMIC
+        if(i) bi.size=512;
+#endif
         bi.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         CHECK(vkCreateBuffer(dev, &bi, NULL, &uniform_buffers[i]));
         VkMemoryRequirements req;
@@ -428,11 +459,17 @@ int main(void) {
         CHECK(vkAllocateMemory(dev, &ai, NULL, &uniform_memory[i]));
         CHECK(vkBindBufferMemory(dev, uniform_buffers[i], uniform_memory[i], 0));
         void *mapped;
-        CHECK(vkMapMemory(dev, uniform_memory[i], 0, uniform_bytes, 0, &mapped));
+        CHECK(vkMapMemory(dev, uniform_memory[i], 0, VK_WHOLE_SIZE, 0, &mapped));
         memcpy(mapped, uniform_data[i], uniform_bytes);
+#ifdef PROBE_DYNAMIC
+        if(i) { const float blue[]={0,0,1,1}; memcpy((char*)mapped+256,blue,sizeof blue); }
+#endif
         vkUnmapMemory(dev, uniform_memory[i]);
     }
     VkDescriptorPoolSize pool_sizes[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 15}};
+#ifdef PROBE_DYNAMIC
+    pool_sizes[1]=(VkDescriptorPoolSize){VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,1};
+#endif
     VkDescriptorPoolCreateInfo pool_ci = {0};
     pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_ci.maxSets = 2;
@@ -512,6 +549,9 @@ int main(void) {
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         write.pBufferInfo = &buffer;
+#ifdef PROBE_DYNAMIC
+        if(i) write.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+#endif
 #if defined(PROBE_DUDE_GENERIC) && !defined(PROBE_LIGHTING)
         VkDescriptorImageInfo image_info = {texture_sampler, texture_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         if (i) {
@@ -654,10 +694,45 @@ int main(void) {
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &vbuf, &offset);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl, 0, 1, &sets[0], 0, NULL);
+#ifdef PROBE_DYNAMIC
+        uint32_t dynamic_offset=0;
+        VkRect2D half={{0,0},{640,720}};
+        vkCmdSetScissor(cmd,0,1,&half);
+        vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pl,1,1,&sets[1],1,&dynamic_offset);
+        vkCmdDraw(cmd,3,1,0,0);
+        dynamic_offset=256; half.offset.x=640;
+        vkCmdSetScissor(cmd,0,1,&half);
+        vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pl,1,1,&sets[1],1,&dynamic_offset);
+        vkCmdDraw(cmd,3,1,0,0);
+#else
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl, 1, 1, &sets[1], 0, NULL);
         vkCmdDraw(cmd, 3, 1, 0, 0);
+#endif
         vkCmdEndRenderPass(cmd);
 
+#ifdef PROBE_PRESENT
+        VkImageMemoryBarrier barrier={0};
+        barrier.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.oldLayout=barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcQueueFamilyIndex=barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        barrier.image=offscreen[img_idx];
+        barrier.subresourceRange=(VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&barrier);
+        barrier.srcAccessMask=0; barrier.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.image=sw_images[img_idx]; barrier.oldLayout=VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&barrier);
+        VkImageBlit blit={0};
+        blit.srcSubresource=blit.dstSubresource=(VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
+        blit.srcOffsets[1]=blit.dstOffsets[1]=(VkOffset3D){1280,720,1};
+        vkCmdBlitImage(cmd,offscreen[img_idx],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            sw_images[img_idx],VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&blit,VK_FILTER_NEAREST);
+        barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask=0;
+        barrier.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,0,NULL,0,NULL,1,&barrier);
+#endif
         CHECK(vkEndCommandBuffer(cmd));
 
         VkSubmitInfo submit = {0};
@@ -745,7 +820,14 @@ int main(void) {
     for (uint32_t i = 0; i < sw_img_count; i++) {
         vkDestroyFramebuffer(dev, fbs[i], NULL);
         vkDestroyImageView(dev, sw_views[i], NULL);
+#ifdef PROBE_PRESENT
+        vkDestroyImage(dev,offscreen[i],NULL);
+        vkFreeMemory(dev,offscreen_memory[i],NULL);
+#endif
     }
+#ifdef PROBE_PRESENT
+    free(offscreen); free(offscreen_memory);
+#endif
     free(fbs);
     free(sw_views);
     free(sw_images);
