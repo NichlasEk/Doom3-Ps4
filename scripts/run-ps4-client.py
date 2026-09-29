@@ -17,6 +17,10 @@ if not os.environ.get('DISPLAY'):
 profile = Path(os.environ.get('CLIENT_PROFILE', str(root/'build/client-profile'))).resolve()
 out = Path(os.environ.get('CLIENT_ARTIFACTS', str(root/'artifacts/client'))).resolve()
 eboot = Path(os.environ.get('CLIENT_EBOOT', str(root/'build/client-runtime/eboot.bin'))).resolve(strict=True)
+# Fresh profiles must never prompt to migrate another project's saves.
+for user in range(1000,1004):
+    for folder in ('savedata','trophy','inputs'):
+        (profile/f'shadPS4/home/{user}/{folder}').mkdir(parents=True,exist_ok=True)
 data = profile/'shadPS4/data'
 data.mkdir(parents=True, exist_ok=True)
 out.mkdir(parents=True, exist_ok=True)

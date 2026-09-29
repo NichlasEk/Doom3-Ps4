@@ -19,6 +19,7 @@ if ! git -C "$source_dir" apply --reverse --check "$patch" 2>/dev/null; then
   git -C "$source_dir" apply --check "$patch"
   git -C "$source_dir" apply "$patch"
 fi
+python3 "$root/scripts/build-ps4-usb.py"
 "$root/scripts/build-native-vulkan.sh"
 cmake -S "$source_dir/neo" -B "$root/build/ps4-client" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$root/cmake/openorbis.cmake" \

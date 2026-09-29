@@ -14,7 +14,7 @@ parser.add_argument('--existing-extraction',action='store_true')
 args=parser.parse_args()
 manifest=json.loads((root/'artifacts/package/manifest.json').read_text())
 package=Path(manifest['package'])
-output=root/'build/client-package-extracted'
+output=root/'build/client-package-clear-003-extracted'
 app=output/'uroot'
 tool=Path(os.environ.get('OO_PS4_TOOLCHAIN','/opt/openorbis/OpenOrbis/PS4Toolchain'))/'bin/linux/PkgTool.Core'
 def sha(path):
@@ -42,7 +42,7 @@ def sfo(path):
 for name,expected in manifest['files'].items():
     if name=='sce_sys/param.sfo':
         # PkgTool adds PUBTOOLINFO/PUBTOOLVER during packing; retain all input fields.
-        original=sfo(root/'build/client-package'/name)
+        original=sfo(Path(manifest['stage'])/name)
         packed=sfo(app/name)
         if any(packed.get(key)!=value for key,value in original.items()):
             raise SystemExit('Packaged SFO changed an application field')
@@ -50,6 +50,8 @@ for name,expected in manifest['files'].items():
             raise SystemExit('Unexpected generated SFO fields')
     elif sha(app/name)!=expected:
         raise SystemExit('Extracted file mismatch: '+name)
+if manifest['contains_owned_retail_data'] or list(app.rglob('*.pk4')):
+    raise SystemExit('Retail PK4 data must stay outside the package')
 result=dict(passed=True,checked_files=len(manifest['files']),package_sha256=manifest['sha256'],
             sfo_check='All application fields preserved; generated PUBTOOL fields allowed')
 (root/'artifacts/package/extraction-check.json').write_text(json.dumps(result,indent=2)+'\n')

@@ -1,4 +1,54 @@
+# Doom 3 PS4 package
+
+## Clear External 0.03 — 2026-09-29
+
+`dist/Doom3-PS4-Clear-External-0.03.pkg` is **37,879,808 bytes** (about 38 MB).
+It contains no retail PK4 archives. Put owned game data beside the package
+on USB as `DOOM3/base/pak000.pk4` through `pak004.pk4`.
+See [external data and USB mapping](USB-DATA.md). `/data/doom3-game/base/`
+is also supported and takes priority over USB.
+
+Title: **Doom 3 PS4 - Clear External 0.03**, ID `DM3P00001`, version `00.03`.
+This remains a finite 60-frame menu diagnostic with a five-second capture hold.
+It is not a playable Doom 3 port; input, audio and physical PS4 validation
+remain pending.
+
+The native color clear now uses compiled fullscreen shaders, following the
+physically successful probe and ScummVM clear path. Doom retains its two
+descriptor sets, dynamic offsets and push-constant snapshots. State restoration
+covers pipeline, viewport/scissor and stencil state. The device-lifetime cache
+is bounded at 128 color/format combinations; exhaustion is an explicit error.
+Depth/stencil and linear load-op paths are unchanged.
+
+Validation: native/engine build, package validation and all 13 extracted
+payload/metadata checks pass. No PK4 files are present in the extraction.
+The extracted eboot loaded external data from `/data/doom3-game`, displayed
+the main menu (visually inspected), completed 60 frames and exited cleanly
+in shadPS4. `META CLEAR DOOM 0.03` is present in the GPU log.
+Evidence: `artifacts/clear-003/` and `artifacts/package/`.
+USB sandbox mapping still needs physical-console testing.
+
+```sh
+python3 scripts/package-ps4-client.py --game-data media/game
+python3 scripts/verify-ps4-package.py
+CLIENT_EBOOT="$PWD/build/client-package-clear-003-extracted/uroot/eboot.bin" \
+CLIENT_PROFILE="$PWD/build/clear-003-profile" \
+CLIENT_ARTIFACTS="$PWD/artifacts/clear-003" \
+xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-ps4-client.py
+```
+
+`--game-data` only validates optional local input; it never bundles those files.
+Retail data, packages and generated dependencies remain ignored. Copy the five
+archives as real files (follow local symlinks) to USB's `DOOM3/base/`.
+The drive was disconnected at completion, so staging remains pending.
+
+SHA-256: `f985f29c93a1bd7d92961c3ef07ad74397b051980c4e5d2e5a1d9f1fdd51bd34`.
+
+## Historical package with bundled data
+
 # Personal PS4 menu-test package
+
+Current update: [direct GPU command-memory candidates](DIRECT-PM4-HARDWARE.md). Older versions below are historical evidence.
 
 `dist/Doom3-PS4-Menu-Test-0.01.pkg` packages the tested graphical diagnostic,
 the original project icon, SDK loader support files, license notices and the

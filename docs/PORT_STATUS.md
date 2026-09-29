@@ -1,5 +1,7 @@
 # Doom 3 PS4 port status
 
+Current update: [Clear External 0.03 package and validation](PS4_PACKAGE.md). Older versions below are historical evidence.
+
 Assessment: 2026-09-28. Engine: dhewm3 pinned at
 `455b88e8dff2be822f08eb498f51b383e851fa38`, with the changes in
 `patches/001-ps4-diagnostic.patch`. The owned retail data is local and ignored.
