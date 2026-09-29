@@ -204,7 +204,7 @@ index eab063d..4d6f4d7 100644
 +	#endif
  }
 
- 
+
 diff --git a/neo/framework/Dhewm3SettingsMenu.cpp b/neo/framework/Dhewm3SettingsMenu.cpp
 index 95963d1..d066386 100644
 --- a/neo/framework/Dhewm3SettingsMenu.cpp
@@ -666,7 +666,7 @@ index b0ab349..ef85bc5 100644
  		common->Warning("GLimp_GrabInput called without window");
  		return;
 diff --git a/neo/sys/linux/main.cpp b/neo/sys/linux/main.cpp
-index 3d995cd..8ce1266 100644
+index 3d995cd..4d5e626 100644
 --- a/neo/sys/linux/main.cpp
 +++ b/neo/sys/linux/main.cpp
 @@ -88,6 +88,9 @@ const char* Posix_GetSavePath()
@@ -713,7 +713,7 @@ index 3d995cd..8ce1266 100644
  	{
  		char legacy[MAX_OSPATH];
  		s = getenv("XDG_CONFIG_HOME");
-@@ -518,7 +532,25 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
+@@ -518,7 +532,26 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
  main
  ===============
  */
@@ -724,22 +724,23 @@ index 3d995cd..8ce1266 100644
  int main(int argc, char **argv) {
 +#ifdef __PS4__
 +    vk_ps4_log_open("/data/client-vulkan.log");
-+    const char *externalData = "/data/doom3-game";
++    const bool bundledData = access("/app0/doom3-bundled-data.txt", F_OK) == 0;
++    const char *externalData = bundledData ? "/app0" : "/data/doom3-game";
 +    auto storage = ps4::resolveGameData(externalData, false);
-+    if (storage.status != ps4::StorageStatus::Ready)
++    if (!bundledData && storage.status != ps4::StorageStatus::Ready)
 +        storage = ps4::resolveGameData("/mnt/usb0/DOOM3", true);
 +    if (storage.status != ps4::StorageStatus::Ready) {
 +        vk_ps4_log("FAIL external Doom 3 data: status=%d; need DOOM3/base/pak000.pk4", int(storage.status));
 +        return 2;
 +    }
 +    externalData = storage.path;
-+    vk_ps4_log("Doom 3 external data: %s", externalData);
++    vk_ps4_log("Doom 3 selected data: %s", externalData);
 +
 +#endif
  	// Prevent running Doom 3 as root
  	// Borrowed from Yamagi Quake II
  	if (getuid() == 0) {
-@@ -553,12 +585,49 @@ int main(int argc, char **argv) {
+@@ -553,12 +586,49 @@ int main(int argc, char **argv) {
 
  	Posix_InitSignalHandlers();
 

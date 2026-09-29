@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the interactive alpha; retail data always stays external."""
+"""Package the interactive alpha; external data by default, optional local bundled-data test."""
 from pathlib import Path, PurePosixPath
 import argparse
 import hashlib
@@ -13,11 +13,15 @@ import xml.etree.ElementTree as ET
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--game-data', type=Path, help='Optionally validate external owned data; never included in the package')
+parser.add_argument('--bundle-data', action='store_true', help='Local owned-data test: requires --game-data; do not publish this package')
 parser.add_argument('--skip-build', action='store_true', help='Package the already built, tested client')
 args = parser.parse_args()
+if args.bundle_data and not args.game_data: parser.error('--bundle-data requires --game-data')
+version = '00.06' if args.bundle_data else '00.05'
+candidate = 'Bundled Data Test 0.06' if args.bundle_data else 'Playable Alpha 0.05'
 sdk = Path(os.environ.get('OO_PS4_TOOLCHAIN', '/opt/openorbis/OpenOrbis/PS4Toolchain'))
 pkgtool, gp4tool = sdk/'bin/linux/PkgTool.Core', sdk/'bin/linux/create-gp4'
-stage, dist = root/'build/client-package-playable-005', root/'dist'
+stage, dist = root/('build/client-package-bundled-006' if args.bundle_data else 'build/client-package-playable-005'), root/'dist'
 artifacts = root/'artifacts/package'
 for directory in (stage, dist, artifacts):
     directory.mkdir(parents=True, exist_ok=True)
@@ -44,7 +48,7 @@ def digest(source):
 if b'META CLEAR DOOM 0.03' not in elf.read_bytes():
     raise SystemExit('Client lacks new compiled color clear; rebuild before packaging')
 info = artifacts/'build-info.json'
-info.write_text(json.dumps(dict(candidate='Playable Alpha 0.05',
+info.write_text(json.dumps(dict(candidate=candidate,
     engine_elf_sha256=digest(elf),
     eboot_sha256=digest(root/'build/client-runtime/eboot.bin'),
     vulkan_patch_sha256=digest(root/'patches/ps4-native/vulkan-ps4.patch'),
@@ -73,7 +77,13 @@ if args.game_data:
     for i in range(5):
         if not (args.game_data/f'base/pak{i:03}.pk4').is_file():
             raise SystemExit('External game archive missing: pak%03d.pk4' % i)
-assert not any(name.endswith('.pk4') for name in files)
+if args.bundle_data:
+    for i in range(5): stage_file(args.game_data/f'base/pak{i:03}.pk4', f'base/pak{i:03}.pk4')
+    marker = artifacts/'doom3-bundled-data.txt'
+    marker.write_text('1\n')
+    stage_file(marker, 'doom3-bundled-data.txt')
+else:
+    assert not any(name.endswith('.pk4') for name in files)
 
 content_id = 'IV0000-DOOM00001_00-DOOM3PS4MENUTEST'
 title_id = 'DOOM00001'
@@ -90,9 +100,9 @@ def tool(*arguments, cwd=None):
 tool('sfo_new', sfo)
 for key, value in {'APP_TYPE':1, 'ATTRIBUTE':0, 'DOWNLOAD_DATA_SIZE':0, 'SYSTEM_VER':0}.items():
     tool('sfo_setentry', sfo, key, '--type', 'Integer', '--maxsize', 4, '--value', value)
-for key, size, value in [('APP_VER',8,'00.05'), ('VERSION',8,'00.05'), ('CATEGORY',4,'gd'),
+for key, size, value in [('APP_VER',8,version), ('VERSION',8,version), ('CATEGORY',4,'gd'),
                           ('CONTENT_ID',48,content_id), ('TITLE_ID',12,title_id),
-                          ('TITLE',128,'Doom 3 PS4 - Playable Alpha 0.05')]:
+                          ('TITLE',128,'Doom 3 PS4 - '+candidate)]:
     tool('sfo_setentry', sfo, key, '--type', 'Utf8', '--maxsize', size, '--value', value)
 files['sce_sys/param.sfo'] = sfo
 subprocess.run([str(gp4tool), '-out', 'pkg.gp4', '--content-id='+content_id,
@@ -112,7 +122,7 @@ ET.indent(tree)
 tree.write(project, encoding='utf-8', xml_declaration=True)
 with (artifacts/'pkg-build.log').open('w') as log:
     subprocess.run([str(pkgtool), 'pkg_build', 'pkg.gp4', '.'], cwd=stage, stdout=log, stderr=subprocess.STDOUT, check=True)
-package = dist/'Doom3-PS4-Playable-Alpha-0.05.pkg'
+package = dist/('Doom3-PS4-Bundled-Data-0.06.pkg' if args.bundle_data else 'Doom3-PS4-Playable-Alpha-0.05.pkg')
 shutil.copyfile(stage/(content_id+'.pkg'), package)
 with (artifacts/'pkg-validate.log').open('w') as log:
     subprocess.run([str(pkgtool), 'pkg_validate', '--verbose', str(package)], stdout=log, stderr=subprocess.STDOUT, check=True)
@@ -125,9 +135,9 @@ def sha(path):
 checksum = sha(package)
 (package.with_suffix('.pkg.sha256')).write_text(f'{checksum}  {package.name}\n')
 manifest = dict(package=str(package), sha256=checksum, bytes=package.stat().st_size,
-    title_id=title_id, version='00.05', engine_elf_sha256=sha(elf),
+    title_id=title_id, version=version, engine_elf_sha256=sha(elf),
     source_revision=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip(),
-    stage=str(stage), contains_owned_retail_data=False, external_data_paths=["/data/doom3-game", "/mnt/usb0/DOOM3"], physical_ps4_tested=False,
+    stage=str(stage), contains_owned_retail_data=args.bundle_data, external_data_paths=[] if args.bundle_data else ["/data/doom3-game", "/mnt/usb0/DOOM3"], physical_ps4_tested=False,
     files={name:sha(stage/name) for name in files})
 (artifacts/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 print(json.dumps({key:manifest[key] for key in ('package','sha256','bytes','title_id')},indent=2))
