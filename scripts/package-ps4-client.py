@@ -17,11 +17,11 @@ parser.add_argument('--bundle-data', action='store_true', help='Local owned-data
 parser.add_argument('--skip-build', action='store_true', help='Package the already built, tested client')
 args = parser.parse_args()
 if args.bundle_data and not args.game_data: parser.error('--bundle-data requires --game-data')
-version = '00.06' if args.bundle_data else '00.05'
-candidate = 'Bundled Data Test 0.06' if args.bundle_data else 'Playable Alpha 0.05'
+version = '00.07' if args.bundle_data else '00.05'
+candidate = 'Bundled Data Test 0.07' if args.bundle_data else 'Playable Alpha 0.05'
 sdk = Path(os.environ.get('OO_PS4_TOOLCHAIN', '/opt/openorbis/OpenOrbis/PS4Toolchain'))
 pkgtool, gp4tool = sdk/'bin/linux/PkgTool.Core', sdk/'bin/linux/create-gp4'
-stage, dist = root/('build/client-package-bundled-006' if args.bundle_data else 'build/client-package-playable-005'), root/'dist'
+stage, dist = root/('build/client-package-bundled-007' if args.bundle_data else 'build/client-package-playable-005'), root/'dist'
 artifacts = root/'artifacts/package'
 for directory in (stage, dist, artifacts):
     directory.mkdir(parents=True, exist_ok=True)
@@ -122,7 +122,7 @@ ET.indent(tree)
 tree.write(project, encoding='utf-8', xml_declaration=True)
 with (artifacts/'pkg-build.log').open('w') as log:
     subprocess.run([str(pkgtool), 'pkg_build', 'pkg.gp4', '.'], cwd=stage, stdout=log, stderr=subprocess.STDOUT, check=True)
-package = dist/('Doom3-PS4-Bundled-Data-0.06.pkg' if args.bundle_data else 'Doom3-PS4-Playable-Alpha-0.05.pkg')
+package = dist/('Doom3-PS4-Bundled-Data-0.07.pkg' if args.bundle_data else 'Doom3-PS4-Playable-Alpha-0.05.pkg')
 shutil.copyfile(stage/(content_id+'.pkg'), package)
 with (artifacts/'pkg-validate.log').open('w') as log:
     subprocess.run([str(pkgtool), 'pkg_validate', '--verbose', str(package)], stdout=log, stderr=subprocess.STDOUT, check=True)

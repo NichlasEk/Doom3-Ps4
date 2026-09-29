@@ -221,10 +221,23 @@ index 95963d1..d066386 100644
 +}
  #endif
 diff --git a/neo/framework/FileSystem.cpp b/neo/framework/FileSystem.cpp
-index 3c78c03..f192a18 100644
+index 3c78c03..25b250e 100644
 --- a/neo/framework/FileSystem.cpp
 +++ b/neo/framework/FileSystem.cpp
-@@ -3879,6 +3879,10 @@ idFileSystemLocal::StartBackgroundReadThread
+@@ -3195,7 +3195,11 @@ idFile_InZip * idFileSystemLocal::ReadFileFromZip( pack_t *pak, fileInPack_t *pa
+ 	unzSetOffset64( pak->handle, pakFile->pos );
+
+ 	// clone handle and assign a new internal filestream to zip file to it
+-	unzFile uf = unzReOpen( pak->pakFilename, pak->handle );
++	#ifdef __PS4__
++    static unsigned ps4ReopenCount;
++    if (ps4ReopenCount++ < 12) common->Printf("DATA AUDIT reopen %s\n",pak->pakFilename.c_str());
++#endif
++    unzFile uf = unzReOpen( pak->pakFilename, pak->handle );
+ 	if ( uf == NULL ) {
+ 		common->FatalError( "Couldn't reopen %s", pak->pakFilename.c_str() );
+ 	}
+@@ -3879,6 +3883,10 @@ idFileSystemLocal::StartBackgroundReadThread
  =================
  */
  void idFileSystemLocal::StartBackgroundDownloadThread() {
@@ -666,7 +679,7 @@ index b0ab349..ef85bc5 100644
  		common->Warning("GLimp_GrabInput called without window");
  		return;
 diff --git a/neo/sys/linux/main.cpp b/neo/sys/linux/main.cpp
-index 3d995cd..4d5e626 100644
+index 3d995cd..65560f5 100644
 --- a/neo/sys/linux/main.cpp
 +++ b/neo/sys/linux/main.cpp
 @@ -88,6 +88,9 @@ const char* Posix_GetSavePath()
@@ -713,7 +726,7 @@ index 3d995cd..4d5e626 100644
  	{
  		char legacy[MAX_OSPATH];
  		s = getenv("XDG_CONFIG_HOME");
-@@ -518,7 +532,26 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
+@@ -518,7 +532,29 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
  main
  ===============
  */
@@ -724,7 +737,10 @@ index 3d995cd..4d5e626 100644
  int main(int argc, char **argv) {
 +#ifdef __PS4__
 +    vk_ps4_log_open("/data/client-vulkan.log");
-+    const bool bundledData = access("/app0/doom3-bundled-data.txt", F_OK) == 0;
++    FILE *bundledMarker = fopen("/app0/doom3-bundled-data.txt", "rb");
++    const bool bundledData = bundledMarker != nullptr;
++    if (bundledMarker) fclose(bundledMarker);
++    vk_ps4_log("DATA AUDIT 0.07 bundled=%d marker=fopen",int(bundledData));
 +    const char *externalData = bundledData ? "/app0" : "/data/doom3-game";
 +    auto storage = ps4::resolveGameData(externalData, false);
 +    if (!bundledData && storage.status != ps4::StorageStatus::Ready)
@@ -740,17 +756,20 @@ index 3d995cd..4d5e626 100644
  	// Prevent running Doom 3 as root
  	// Borrowed from Yamagi Quake II
  	if (getuid() == 0) {
-@@ -553,12 +586,49 @@ int main(int argc, char **argv) {
+@@ -553,12 +589,52 @@ int main(int argc, char **argv) {
 
  	Posix_InitSignalHandlers();
 
 +#ifdef __PS4__
-+    const char *clientArgs[]={"+set","fs_basepath",externalData,"+set","r_graphicsAPI","vulkan","+set","r_mode","-1",
++    const char *clientArgs[]={"+set","fs_basepath",externalData,"+set","fs_cdpath","","+set","fs_devpath","","+set","r_graphicsAPI","vulkan","+set","r_mode","-1",
 +        "+set","r_customWidth","1280","+set","r_customHeight","720",
 +        "+set","s_noSound","1","+set","r_fullscreen","0","+set","r_hdr","0",
 +        "+set","r_parallelImageLoad","0",
 +        "+set","image_useCompression","0","+set","image_usePrecompressedTextures","0"};
 +    common->Init(sizeof(clientArgs)/sizeof(clientArgs[0]),const_cast<char**>(clientArgs));
++    const char *pathKeys[]={"fs_basepath", "fs_cdpath", "fs_devpath", "fs_savepath", "fs_configpath"};
++    for (const char *key : pathKeys)
++        vk_ps4_log("DATA AUDIT %s=%s",key,cvarSystem->GetCVarString(key));
 +#else
  	if ( argc > 1 ) {
  		common->Init( argc-1, &argv[1] );
