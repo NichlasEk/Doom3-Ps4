@@ -29,3 +29,11 @@ The previous package is retained locally for comparison.
 SHA-256: `920af2f82ab16d2df9fec03167d425867cc1c716a544df884083e83e0ad67394`.
 Evidence: `artifacts/package/repack-005.log`, `verify-005.log`, `manifest.json`
 and `extraction-check.json`. Physical install and USB delivery are pending.
+
+## Physical update
+
+The user confirms 0.05 installs and reaches a menu with a video clip. It then
+fails around 3D initialization before gameplay. Installation is now confirmed;
+the exact reason 0.04 was rejected remains inferred. Physical gameplay is not
+confirmed. PS4 Vulkan Diagnose 0.12 in the UT99 repository now starts with
+`/data/doom3-client/dudelog.txt` and `/data/client-vulkan.log` for this failure.
