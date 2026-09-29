@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import struct
 import subprocess
 
@@ -14,7 +15,7 @@ parser.add_argument('--existing-extraction',action='store_true')
 args=parser.parse_args()
 manifest=json.loads((root/'artifacts/package/manifest.json').read_text())
 package=Path(manifest['package'])
-output=root/'build/client-package-playable-004-extracted'
+output=Path(manifest['stage']+'-extracted')
 app=output/'uroot'
 tool=Path(os.environ.get('OO_PS4_TOOLCHAIN','/opt/openorbis/OpenOrbis/PS4Toolchain'))/'bin/linux/PkgTool.Core'
 def sha(path):
@@ -52,6 +53,15 @@ for name,expected in manifest['files'].items():
         raise SystemExit('Extracted file mismatch: '+name)
 if manifest['contains_owned_retail_data'] or list(app.rglob('*.pk4')):
     raise SystemExit('Retail PK4 data must stay outside the package')
+packed=sfo(app/'sce_sys/param.sfo')
+def field(key): return packed[key][1].rstrip(b'\0').decode()
+title_id=field('TITLE_ID')
+if not re.fullmatch(r'[A-Z]{4}[0-9]{5}',title_id):
+    raise SystemExit('Invalid title ID format')
+if field('CONTENT_ID') != 'IV0000-'+title_id+'_00-DOOM3PS4MENUTEST':
+    raise SystemExit('Content/title identity mismatch')
+if title_id!=manifest['title_id'] or field('APP_VER')!=manifest['version']:
+    raise SystemExit('Manifest/SFO identity mismatch')
 result=dict(passed=True,checked_files=len(manifest['files']),package_sha256=manifest['sha256'],
             sfo_check='All application fields preserved; generated PUBTOOL fields allowed')
 (root/'artifacts/package/extraction-check.json').write_text(json.dumps(result,indent=2)+'\n')

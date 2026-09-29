@@ -1,3 +1,5 @@
+> Latest installation candidate: [0.05 package identity correction](docs/INSTALL-005.md).
+
 # Doom 3 PS4 port
 
 Latest candidate: [Playable Alpha 0.04](docs/PLAYABLE-ALPHA.md), about 38 MB,

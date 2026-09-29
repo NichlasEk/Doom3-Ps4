@@ -1,3 +1,5 @@
+> Latest installation candidate: [0.05 package identity correction](INSTALL-005.md).
+
 # Playable Alpha 0.04 — 2026-09-29
 
 This is the first continuous, controller-driven Doom 3 client candidate.
