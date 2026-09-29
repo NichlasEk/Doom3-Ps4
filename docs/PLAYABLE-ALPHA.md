@@ -92,3 +92,7 @@ xvfb-run -a -s '-screen 0 1280x720x24' python3 scripts/run-shader-probe.py sampl
 Regenerate presentation SPIR-V with `python3 scripts/generate-present-shaders.py`
 (glslangValidator and spirv-val). Native/engine changes are preserved as patches;
 ignored dependency checkouts and owned assets are not committed.
+
+## USB delivery 2026-09-29
+
+See [USB delivery checks and console test steps](USB-TEST-2026-09-29.md).
