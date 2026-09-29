@@ -11,7 +11,7 @@ root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
 mode = sys.argv[1] if len(sys.argv) > 1 else 'demote'
-if mode not in ('depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
+if mode not in ('sampledpresent', 'depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
     raise SystemExit('Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion')
 profile = root / ('build/shader-probe-profile-'+mode)
 out = root / ('artifacts/shader-probe-'+mode)
@@ -50,13 +50,13 @@ with (out/'emulator.log').open('w') as log:
         if image.size != (1280,720):
             raise RuntimeError('Unexpected display size')
         wrong = 0
-        stripe_width = 1 if mode in ('demote','dynamic','present') else 16
+        stripe_width = 1 if mode in ('demote','dynamic','present','sampledpresent') else 16
         for y in range(720):
             for x in range(1280):
                 expected = (26,26,51) if (x // stripe_width) % 2 else (0,255,0)
                 if mode == 'clear':
                     expected = (26,26,51)
-                elif mode in ('dynamic','present') and x >= 640 and x%2 == 0:
+                elif mode in ('dynamic','present','sampledpresent') and x >= 640 and x%2 == 0:
                     expected = (0,0,255)
                 elif mode == 'cube':
                     colors = [(255,0,0),(0,255,0),(0,0,255),(255,255,0),(0,255,255),(255,0,255)]

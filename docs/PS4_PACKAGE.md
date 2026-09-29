@@ -1,5 +1,17 @@
 # Doom 3 PS4 package
 
+## Playable Alpha 0.04 — 2026-09-29
+
+Current candidate: [controls, evidence and limitations](PLAYABLE-ALPHA.md).
+Continuous native controller input; external retail data; audio disabled.
+Physical PS4 testing remains pending.
+
+`dist/Doom3-PS4-Playable-Alpha-0.04.pkg`: **37879808 bytes**.
+SHA-256: `4e46feabd9c3d82d9d0fc90d2be9f842c459d3136c064aea0dbf5ededd5e3a52`.
+
+The current packaging scripts produce 0.04. The commands and results below
+describe historical candidates.
+
 ## Clear External 0.03 — 2026-09-29
 
 `dist/Doom3-PS4-Clear-External-0.03.pkg` is **37,879,808 bytes** (about 38 MB).

@@ -1,4 +1,7 @@
-# Graphical PS4 client diagnostic
+# Graphical PS4 client
+
+Current build: [Playable Alpha 0.04](PLAYABLE-ALPHA.md). The older milestone
+below records the initial finite menu test; current packaged builds are interactive.
 
 The graphical client uses DUDE at
 `3b6872fe278802496cc7a8f8209b847c68efed2a`, with
@@ -22,8 +25,8 @@ Retail data stays outside Git: `media/game/base/pak000.pk4` through `pak004.pk4`
 The runner links it into an isolated emulator profile at
 `build/client-profile/shadPS4/data/doom3-game`. Logs/settings use
 `/data/doom3-client`; native driver diagnostics use `/data/client-vulkan.log`.
-Artifacts and screenshots are under `artifacts/client/`. The client runs 60
-engine frames and shuts down. The default runner deadline is 240 seconds
+Artifacts and screenshots are under `artifacts/client/`. The runner writes a 60-frame test marker and shuts the client down after that
+bounded run. The package contains no test marker and runs continuously. The default runner deadline is 240 seconds
 (`CLIENT_TIMEOUT` overrides it); this is a slow diagnostic, not a benchmark.
 
 ## Verified milestone
@@ -45,7 +48,7 @@ not automatically declare the menu correct based on a successful exit.
   longer advertised by the native driver; compute descriptors are skipped in
   this diagnostic, and optional compute effects must remain disabled.
 - Hardlinked base game, sound disabled, asynchronous download/timer threads
-  skipped. A playable client needs input, audio and a proper threading path.
+  skipped. Native input is now implemented; audio and broader threading support remain pending.
 - RGBA textures, one-mip cube path, D32S8 scene depth. Compressed/precompressed
   textures and HDR disabled in the diagnostic startup arguments.
 - Dynamic UBO offsets are validated in binding order, with bounds/alignment
@@ -62,7 +65,7 @@ not automatically declare the menu correct based on a successful exit.
   are quantized before FP16 export to preserve the requested UNORM byte value.
   The `present` probe alternates the clear color between frames and checks all
   background pixels alongside the green/blue draws.
-- 1:1 RGBA8 scene-to-VideoOut copying uses the GPU detiling/readback path. This
+- The alpha uses a fullscreen sampled draw for RGBA8 scene-to-VideoOut presentation. The older diagnostic used the GPU detiling/readback path. This
   records many DMA packets and is slow. Recording capacity is 32 MiB with
   packet-aligned submissions. A shader blit is the next performance task.
 - Failed frame recording now stops the client before submitting that buffer.

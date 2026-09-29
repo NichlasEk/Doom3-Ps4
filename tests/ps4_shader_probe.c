@@ -1,3 +1,6 @@
+#ifdef PROBE_SAMPLED_PRESENT
+#include "present.h"
+#endif
 /* Derived from OpenGNM tests/test_triangle_ps4.c; see
  * thirdparty/ps4-native/LICENSE.vulkan-ps4. Modified for Doom3-Ps4:
  * Vulkan 1.4 SPIR-V demote + derivative + independent descriptor-set probe.
@@ -194,7 +197,7 @@ int main(void) {
         ici.imageType=VK_IMAGE_TYPE_2D; ici.format=VK_FORMAT_R8G8B8A8_UNORM;
         ici.extent=(VkExtent3D){1280,720,1}; ici.mipLevels=ici.arrayLayers=1;
         ici.samples=VK_SAMPLE_COUNT_1_BIT; ici.tiling=VK_IMAGE_TILING_OPTIMAL;
-        ici.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ici.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
         CHECK(vkCreateImage(dev,&ici,NULL,&offscreen[i]));
         VkMemoryRequirements req; vkGetImageMemoryRequirements(dev,offscreen[i],&req);
         VkMemoryAllocateInfo ai={0}; ai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -734,8 +737,12 @@ int main(void) {
         VkImageBlit blit={0};
         blit.srcSubresource=blit.dstSubresource=(VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
         blit.srcOffsets[1]=blit.dstOffsets[1]=(VkOffset3D){1280,720,1};
+#ifdef PROBE_SAMPLED_PRESENT
+        CHECK(PS4_PresentDraw(dev,cmd,offscreen[img_idx],sw_views[img_idx],sw_images[img_idx],(VkExtent2D){1280,720}));
+#else
         vkCmdBlitImage(cmd,offscreen[img_idx],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             sw_images[img_idx],VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&blit,VK_FILTER_NEAREST);
+#endif
         barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask=0;
         barrier.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,0,0,NULL,0,NULL,1,&barrier);
@@ -819,6 +826,9 @@ int main(void) {
         vkDestroyBuffer(dev, uniform_buffers[i], NULL);
         vkFreeMemory(dev, uniform_memory[i], NULL);
     }
+#ifdef PROBE_SAMPLED_PRESENT
+    PS4_DestroyPresent(dev);
+#endif
     vkDestroyPipelineLayout(dev, pl, NULL);
     vkDestroyShaderModule(dev, vs_mod, NULL);
     vkDestroyShaderModule(dev, fs_mod, NULL);

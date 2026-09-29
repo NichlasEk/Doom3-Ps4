@@ -1,5 +1,5 @@
 diff --git a/neo/CMakeLists.txt b/neo/CMakeLists.txt
-index f5ec87b..4d2a70a 100644
+index f5ec87b..25e3276 100644
 --- a/neo/CMakeLists.txt
 +++ b/neo/CMakeLists.txt
 @@ -1,6 +1,9 @@
@@ -42,7 +42,7 @@ index f5ec87b..4d2a70a 100644
 
  if(CORE)
 +  if(DHEWM3_PS4)
-+    list(APPEND src_sys_core ${src_stub_openal} "${DOOM3_PS4_ROOT}/platform/ps4/videoout_wsi.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/storage.cpp")
++    list(APPEND src_sys_core ${src_stub_openal} "${DOOM3_PS4_ROOT}/platform/ps4/videoout_wsi.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/storage.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/present.cpp")
 +  endif()
  	add_executable(${DHEWM3BINARY} WIN32 MACOSX_BUNDLE
  		${src_core}
@@ -235,6 +235,47 @@ index 3c78c03..f192a18 100644
  	if ( !backgroundThread.threadHandle ) {
  		Sys_CreateThread( BackgroundDownloadThread, &backgroundThread_exit, backgroundThread, "backgroundDownload" );
  	} else {
+diff --git a/neo/game/Game_local.cpp b/neo/game/Game_local.cpp
+index 949e9ae..3efbbb1 100644
+--- a/neo/game/Game_local.cpp
++++ b/neo/game/Game_local.cpp
+@@ -2465,6 +2465,14 @@ gameReturn_t idGameLocal::RunFrame( const usercmd_t *clientCmds ) {
+ 		skipCinematic = false;
+ 	}
+
++#ifdef __PS4__
++    if(player && (framenum % 30)==0) {
++        const idVec3 &pos=player->GetPhysics()->GetOrigin();
++        const usercmd_t &input=clientCmds[localClientNum];
++        common->Printf("PS4 GAME tick=%d pos=%.2f,%.2f,%.2f yaw=%.2f buttons=%u move=%d,%d health=%d\n",
++            framenum,pos.x,pos.y,pos.z,player->viewAngles.yaw,input.buttons,input.forwardmove,input.rightmove,player->health);
++    }
++#endif
+ 	// show any debug info for this frame
+ 	RunDebugInfo();
+ 	D_DrawDebugLines();
+diff --git a/neo/game/Weapon.cpp b/neo/game/Weapon.cpp
+index a226382..7421cd2 100644
+--- a/neo/game/Weapon.cpp
++++ b/neo/game/Weapon.cpp
+@@ -402,7 +402,7 @@ void idWeapon::Restore( idRestoreGame *savefile ) {
+ 	WEAPON_RELOAD.LinkTo(		scriptObject, "WEAPON_RELOAD" );
+ 	WEAPON_NETRELOAD.LinkTo(	scriptObject, "WEAPON_NETRELOAD" );
+ 	WEAPON_NETENDRELOAD.LinkTo(	scriptObject, "WEAPON_NETENDRELOAD" );
+-	if (!IsDoom3DemoVersion()) // the demo assets don't support WEAPON_NETFIRING
++	if (!IsDoom3DemoVersion() && (gameLocal.isMultiplayer || scriptObject.GetVariable("WEAPON_NETFIRING", ev_boolean))) // Original retail scripts omit this network-only field
+ 		WEAPON_NETFIRING.LinkTo(	scriptObject, "WEAPON_NETFIRING" );
+ 	WEAPON_RAISEWEAPON.LinkTo(	scriptObject, "WEAPON_RAISEWEAPON" );
+ 	WEAPON_LOWERWEAPON.LinkTo(	scriptObject, "WEAPON_LOWERWEAPON" );
+@@ -1018,7 +1018,7 @@ void idWeapon::GetWeaponDef( const char *objectname, int ammoinclip ) {
+ 	WEAPON_RELOAD.LinkTo(		scriptObject, "WEAPON_RELOAD" );
+ 	WEAPON_NETRELOAD.LinkTo(	scriptObject, "WEAPON_NETRELOAD" );
+ 	WEAPON_NETENDRELOAD.LinkTo(	scriptObject, "WEAPON_NETENDRELOAD" );
+-	if (!IsDoom3DemoVersion()) // the demo assets don't support WEAPON_NETFIRING
++	if (!IsDoom3DemoVersion() && (gameLocal.isMultiplayer || scriptObject.GetVariable("WEAPON_NETFIRING", ev_boolean))) // Original retail scripts omit this network-only field
+ 		WEAPON_NETFIRING.LinkTo(	scriptObject, "WEAPON_NETFIRING" );
+ 	WEAPON_RAISEWEAPON.LinkTo(	scriptObject, "WEAPON_RAISEWEAPON" );
+ 	WEAPON_LOWERWEAPON.LinkTo(	scriptObject, "WEAPON_LOWERWEAPON" );
 diff --git a/neo/idlib/Str.h b/neo/idlib/Str.h
 index 79b0aa8..538223c 100644
 --- a/neo/idlib/Str.h
@@ -295,7 +336,7 @@ index 1d6f481..28a7dab 100644
  			R_FreeStaticTriSurfIndexes( &tri );
  		} // else silInfos[i].indexes points directly into the corresponding data in this->md3
 diff --git a/neo/renderer/rhi/vk/VulkanBackend.cpp b/neo/renderer/rhi/vk/VulkanBackend.cpp
-index 3eaad02..4a0630a 100644
+index 3eaad02..84e12d1 100644
 --- a/neo/renderer/rhi/vk/VulkanBackend.cpp
 +++ b/neo/renderer/rhi/vk/VulkanBackend.cpp
 @@ -33,6 +33,11 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
@@ -320,7 +361,17 @@ index 3eaad02..4a0630a 100644
  #define VMA_STATIC_VULKAN_FUNCTIONS 1
  #define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
  #define VMA_IMPLEMENTATION
-@@ -1387,7 +1395,11 @@ VulkanBackend::CreateInstance
+@@ -142,6 +150,9 @@ static idCVar r_vkBdaZfill( "r_vkBdaZfill", "0", CVAR_RENDERER | CVAR_INTEGER,
+ static idCVar r_vkBdaVerbose( "r_vkBdaVerbose", "0", CVAR_RENDERER | CVAR_BOOL,
+ 	"Vulkan backend: print the r_vkBdaZfill firing counter once/sec (per-draw / batched / fell-back) to confirm the BDA z-fill path is live. Diagnostic only, off by default so enabling the offload doesn't chatter to the console." );
+
++#ifdef __PS4__
++#include "present.h"
++#endif
+ namespace rhi {
+
+ // Forward declarations for the crash-dump helpers implemented later in this TU.
+@@ -1387,7 +1398,11 @@ VulkanBackend::CreateInstance
  */
  bool VulkanBackend::CreateInstance() {
  	SDL_Window *win = (SDL_Window *)GLimp_GetSDLWindow();
@@ -333,7 +384,7 @@ index 3eaad02..4a0630a 100644
  		common->Warning( "VK: no SDL window - GLimp_Init must run first" );
  		return false;
  	}
-@@ -1397,7 +1409,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1397,7 +1412,7 @@ bool VulkanBackend::CreateInstance() {
  	// backend targets a single 1.4 baseline rather than juggling older versions.
  	uint32_t instVersion = VK_API_VERSION_1_0;
  	vkEnumerateInstanceVersion( &instVersion );
@@ -342,7 +393,7 @@ index 3eaad02..4a0630a 100644
  		common->Warning( "VK: loader only supports Vulkan %u.%u (baseline is 1.4) - update your Vulkan runtime/drivers",
  			VK_API_VERSION_MAJOR( instVersion ), VK_API_VERSION_MINOR( instVersion ) );
  		return false;
-@@ -1405,7 +1417,9 @@ bool VulkanBackend::CreateInstance() {
+@@ -1405,7 +1420,9 @@ bool VulkanBackend::CreateInstance() {
 
  	// surface extensions from SDL
  	std::vector<const char *> exts;
@@ -353,7 +404,7 @@ index 3eaad02..4a0630a 100644
  	{
  		Uint32 extCount = 0;
  		const char * const * sdlExts = SDL_Vulkan_GetInstanceExtensions( &extCount );
-@@ -1455,7 +1469,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1455,7 +1472,7 @@ bool VulkanBackend::CreateInstance() {
  	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
  	app.pApplicationName = "DUDE";
  	app.pEngineName = "DUDE";
@@ -362,7 +413,7 @@ index 3eaad02..4a0630a 100644
 
  	VkInstanceCreateInfo ici = {};
  	ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-@@ -1492,6 +1506,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1492,6 +1509,7 @@ bool VulkanBackend::CreateInstance() {
  		VK_API_VERSION_PATCH( instVersion ),
  		haveValidation ? "ON" : "off" );
 
@@ -370,7 +421,7 @@ index 3eaad02..4a0630a 100644
  	// surface
  #if SDL_VERSION_ATLEAST(3, 0, 0)
  	if ( !SDL_Vulkan_CreateSurface( win, instance, NULL, &surface ) ) {
-@@ -1502,6 +1517,10 @@ bool VulkanBackend::CreateInstance() {
+@@ -1502,6 +1520,10 @@ bool VulkanBackend::CreateInstance() {
  		return false;
  	}
 
@@ -381,7 +432,7 @@ index 3eaad02..4a0630a 100644
  	return true;
  }
 
-@@ -1539,7 +1558,7 @@ bool VulkanBackend::PickPhysicalDevice() {
+@@ -1539,7 +1561,7 @@ bool VulkanBackend::PickPhysicalDevice() {
  			VK_API_VERSION_MAJOR( props.apiVersion ), VK_API_VERSION_MINOR( props.apiVersion ),
  			VK_API_VERSION_PATCH( props.apiVersion ) );
 
@@ -390,7 +441,7 @@ index 3eaad02..4a0630a 100644
  			common->Printf( "VK:   skipped (needs Vulkan 1.4)\n" );
  			continue;
  		}
-@@ -1901,7 +1920,7 @@ bool VulkanBackend::CreateDeviceAndVma() {
+@@ -1901,7 +1923,7 @@ bool VulkanBackend::CreateDeviceAndVma() {
  	aci.physicalDevice = physical;
  	aci.device = device;
  	aci.instance = instance;
@@ -399,7 +450,7 @@ index 3eaad02..4a0630a 100644
  	// must match the enabled feature + the buffer usage bit (Phase 3.2b BDA); VMA needs this to
  	// pass VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT / the alloc flag through to buffer creation.
  	if ( haveBufferDeviceAddress ) {
-@@ -1919,6 +1938,9 @@ VulkanBackend::QueryDrawableSize
+@@ -1919,6 +1941,9 @@ VulkanBackend::QueryDrawableSize
  ====================
  */
  void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
@@ -409,7 +460,7 @@ index 3eaad02..4a0630a 100644
  	SDL_Window *win = (SDL_Window *)GLimp_GetSDLWindow();
  	w = h = 0;
  	if ( win == NULL ) {
-@@ -1927,7 +1949,11 @@ void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
+@@ -1927,7 +1952,11 @@ void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
  #if SDL_VERSION_ATLEAST(3, 0, 0)
  	SDL_GetWindowSizeInPixels( win, &w, &h );
  #else
@@ -422,7 +473,7 @@ index 3eaad02..4a0630a 100644
  #endif
  }
 
-@@ -2127,7 +2153,11 @@ bool VulkanBackend::CreateSceneTargets() {
+@@ -2127,7 +2156,11 @@ bool VulkanBackend::CreateSceneTargets() {
  	}
 
  	// depth-stencil format: D24S8 where supported (NVIDIA), else D32S8 (AMD)
@@ -434,7 +485,17 @@ index 3eaad02..4a0630a 100644
  	VkFormatProperties fp;
  	vkGetPhysicalDeviceFormatProperties( physical, sceneDepthFormat, &fp );
  	if ( ( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT ) == 0 ) {
-@@ -3091,7 +3121,10 @@ void VulkanBackend::EndFrame() {
+@@ -2272,6 +2305,9 @@ VulkanBackend::DestroySceneTargets
+ ====================
+ */
+ void VulkanBackend::DestroySceneTargets() {
++#ifdef __PS4__
++    PS4_DestroyPresent(device);
++#endif
+ 	if ( sceneFb )         { vkDestroyFramebuffer( device, sceneFb, NULL ); sceneFb = VK_NULL_HANDLE; }
+ 	if ( passClear )       { vkDestroyRenderPass( device, passClear, NULL ); passClear = VK_NULL_HANDLE; }
+ 	if ( passLoad )        { vkDestroyRenderPass( device, passLoad, NULL ); passLoad = VK_NULL_HANDLE; }
+@@ -3091,7 +3127,10 @@ void VulkanBackend::EndFrame() {
  			gpuTimerBusy[frameIndex] = true;
  			gpuTimerActive = false;
  		}
@@ -446,7 +507,23 @@ index 3eaad02..4a0630a 100644
  		VkSubmitInfo si = {};
  		si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
  		si.commandBufferCount = 1;
-@@ -3212,7 +3245,10 @@ void VulkanBackend::EndFrame() {
+@@ -3142,10 +3181,15 @@ void VulkanBackend::EndFrame() {
+ 	blit.dstOffsets[1].x = (int32_t)swapExtent.width;
+ 	blit.dstOffsets[1].y = (int32_t)swapExtent.height;
+ 	blit.dstOffsets[1].z = 1;
++#ifdef __PS4__
++    if(PS4_PresentDraw(device,f.cb,sceneColor,sceneColorView,swapImages[imageIndex],swapExtent)!=VK_SUCCESS)
++        common->FatalError("PS4 sampled presentation failed");
++#else
+ 	vkCmdBlitImage( f.cb, sceneColor, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+ 		swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+ 		sceneExtent.width == swapExtent.width && sceneExtent.height == swapExtent.height
+ 			? VK_FILTER_NEAREST : VK_FILTER_LINEAR );
++#endif
+
+ 	// M6: ImGui draws into the swapchain image after the blit, through a
+ 	// LOAD render pass whose finalLayout is PRESENT (screenshots read the
+@@ -3212,7 +3256,10 @@ void VulkanBackend::EndFrame() {
  		gpuTimerActive = false;
  	}
 
@@ -458,7 +535,7 @@ index 3eaad02..4a0630a 100644
 
  	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
  	VkSubmitInfo si = {};
-@@ -3461,6 +3497,7 @@ bool VulkanBackend::CreateM2Resources() {
+@@ -3461,6 +3508,7 @@ bool VulkanBackend::CreateM2Resources() {
  		}
  	}
 
@@ -466,7 +543,7 @@ index 3eaad02..4a0630a 100644
  	// compute lane (docs/gpu-offload-plan.md Phase 1): one set of 8 STORAGE_BUFFER bindings
  	// (ComputeArgs::storage[]) + a 128-byte push-constant range for params, a dedicated
  	// pipeline layout, and a FREE-able pool for per-dispatch sets. All COMPUTE-stage, kept
-@@ -3505,6 +3542,7 @@ bool VulkanBackend::CreateM2Resources() {
+@@ -3505,6 +3553,7 @@ bool VulkanBackend::CreateM2Resources() {
  		}
  	}
 
@@ -474,7 +551,7 @@ index 3eaad02..4a0630a 100644
  	// per-slot set 0, pointing at that slot's UBO ring (persistent pool)
  	{
  		VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, FRAMES_IN_FLIGHT };
-@@ -8625,6 +8663,7 @@ Contents are undefined until the first CopyFramebufferToImage.
+@@ -8625,6 +8674,7 @@ Contents are undefined until the first CopyFramebufferToImage.
  ====================
  */
  ImageHandle VulkanBackend::CreateCaptureImage( int w, int h, bool depth, bool hdrFloat ) {
@@ -482,7 +559,7 @@ index 3eaad02..4a0630a 100644
  	if ( device == VK_NULL_HANDLE || w <= 0 || h <= 0 ) {
  		return 0;
  	}
-@@ -9035,6 +9074,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
+@@ -9035,6 +9085,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
  */
  ImageHandle VulkanBackend::CreateTextureCube( int size, const void * const pics[6],
                                                int textureFilter, bool allowMips ) {
@@ -492,7 +569,7 @@ index 3eaad02..4a0630a 100644
  	if ( device == VK_NULL_HANDLE || size <= 0 || pics == NULL || uploadCb == VK_NULL_HANDLE ) {
  		return 0;
  	}
-@@ -11242,8 +11284,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
+@@ -11242,8 +11295,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
  			return;
  		}
  		// GPU-written count form (Phase 3 cull output): draw min(*count, drawCount) commands
@@ -505,7 +582,7 @@ index 3eaad02..4a0630a 100644
  	} else {
  		vkCmdDrawIndexedIndirect( cb, ab, (VkDeviceSize)argsOffset, (uint32_t)drawCount, (uint32_t)stride );
  	}
-@@ -11927,7 +11973,7 @@ bool VulkanBackend::ImGuiInit() {
+@@ -11927,7 +11984,7 @@ bool VulkanBackend::ImGuiInit() {
  	}
 
  	ImGui_ImplVulkan_InitInfo ii = {};
@@ -514,8 +591,43 @@ index 3eaad02..4a0630a 100644
  	ii.Instance = instance;
  	ii.PhysicalDevice = physical;
  	ii.Device = device;
+diff --git a/neo/sys/events.cpp b/neo/sys/events.cpp
+index 5965972..bac5516 100644
+--- a/neo/sys/events.cpp
++++ b/neo/sys/events.cpp
+@@ -239,6 +239,9 @@ static bool buttonStates[K_LAST_KEY];
+ static float joyAxis[MAX_JOYSTICK_AXIS];
+
+ static idList<sysEvent_t> event_overflow;
++#ifdef __PS4__
++#include "input.inc"
++#endif
+
+ struct scancodename_t {
+ 	int sdlScancode;
+@@ -996,6 +999,9 @@ Sys_ShutdownInput
+ =================
+ */
+ void Sys_ShutdownInput() {
++#ifdef __PS4__
++    PS4_ClosePad();
++#endif
+ 	kbd_polls.Clear();
+ 	mouse_polls.Clear();
+ 	joystick_polls.Clear();
+@@ -1802,6 +1808,10 @@ Sys_GenerateEvents
+ ================
+ */
+ void Sys_GenerateEvents() {
++#ifdef __PS4__
++    PS4_PollPad();
++    return;
++#endif
+ 	D3P_ScopedCPUSample(Sys_GenerateEvents);
+
+ 	handleMouseGrab();
 diff --git a/neo/sys/glimp.cpp b/neo/sys/glimp.cpp
-index b0ab349..de68dbb 100644
+index b0ab349..ef85bc5 100644
 --- a/neo/sys/glimp.cpp
 +++ b/neo/sys/glimp.cpp
 @@ -226,6 +226,9 @@ created with SDL_WINDOW_VULKAN and qgl loading is skipped.
@@ -543,8 +655,18 @@ index b0ab349..de68dbb 100644
  	common->Printf("Initializing OpenGL subsystem\n");
 
  	assert(SDL_WasInit(SDL_INIT_VIDEO));
+@@ -1495,6 +1506,9 @@ GLExtension_t GLimp_ExtensionPointer(const char *name) {
+ }
+
+ void GLimp_GrabInput(int flags) {
++#ifdef __PS4__
++    return; // Native VideoOut/ScePad has no SDL window to grab.
++#endif
+ 	if (!window) {
+ 		common->Warning("GLimp_GrabInput called without window");
+ 		return;
 diff --git a/neo/sys/linux/main.cpp b/neo/sys/linux/main.cpp
-index 3d995cd..b921511 100644
+index 3d995cd..8ce1266 100644
 --- a/neo/sys/linux/main.cpp
 +++ b/neo/sys/linux/main.cpp
 @@ -88,6 +88,9 @@ const char* Posix_GetSavePath()
@@ -617,7 +739,7 @@ index 3d995cd..b921511 100644
  	// Prevent running Doom 3 as root
  	// Borrowed from Yamagi Quake II
  	if (getuid() == 0) {
-@@ -553,12 +585,36 @@ int main(int argc, char **argv) {
+@@ -553,12 +585,49 @@ int main(int argc, char **argv) {
 
  	Posix_InitSignalHandlers();
 
@@ -625,6 +747,7 @@ index 3d995cd..b921511 100644
 +    const char *clientArgs[]={"+set","fs_basepath",externalData,"+set","r_graphicsAPI","vulkan","+set","r_mode","-1",
 +        "+set","r_customWidth","1280","+set","r_customHeight","720",
 +        "+set","s_noSound","1","+set","r_fullscreen","0","+set","r_hdr","0",
++        "+set","r_parallelImageLoad","0",
 +        "+set","image_useCompression","0","+set","image_usePrecompressedTextures","0"};
 +    common->Init(sizeof(clientArgs)/sizeof(clientArgs[0]),const_cast<char**>(clientArgs));
 +#else
@@ -637,18 +760,30 @@ index 3d995cd..b921511 100644
 +#endif
 +	#ifdef DHEWM3_PS4_BRINGUP
 +	Sys_Printf("PASS PS4 client initialization\n");
-+	for (int frame = 0; frame < 60; ++frame) {
-+		if (frame == 0) Sys_Printf("PS4 diagnostic: first frame begin\n");
-+		common->Frame();
-+		if (frame == 0) Sys_Printf("PS4 diagnostic: first frame end\n");
-+	}
-+	Sys_Printf("PASS PS4 client 60 frames\n");
++    unsigned frameLimit=0;
++    FILE *control=fopen("/app0/doom3-test-frames.txt","r");
++    if(control) {if(fscanf(control,"%u",&frameLimit)!=1 || frameLimit>100000) frameLimit=60;fclose(control);}
++    char testMap[128]={};control=fopen("/app0/doom3-test-map.txt","r");
++    if(control) {
++        if(fscanf(control,"%127s",testMap)==1) {
++            bool valid=true;
++            for(const char *c=testMap;*c;++c) if(!isalnum(*c)&&*c!='_'&&*c!='/') valid=false;
++            if(valid) {cmdSystem->BufferCommandText(CMD_EXEC_APPEND,va("map %s\n",testMap));Sys_Printf("PS4 TEST MAP %s\n",testMap);}
++        }
++        fclose(control);
++    }
++    Sys_Printf("PS4 client loop: limit=%u (0=interactive)\n",frameLimit);
++    for (unsigned frame=0;!frameLimit || frame<frameLimit;++frame) {
++        common->Frame();
++        if(frame%60==0) Sys_Printf("PS4 client frame=%u\n",frame);
++    }
++    Sys_Printf("PASS PS4 client %u frames\n",frameLimit);
 +    Sys_Printf("CLIENT CAPTURE READY\n");
 +    vk_ps4_log_raw("CLIENT CAPTURE READY");
 +    sleep(5);
-+	common->Shutdown();
++    common->Shutdown();
 +    ps4::releaseGameDataMounts();
-+	return 0;
++    return 0;
 +	#endif
 +
  	while (1) {

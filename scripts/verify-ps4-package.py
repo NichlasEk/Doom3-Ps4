@@ -14,7 +14,7 @@ parser.add_argument('--existing-extraction',action='store_true')
 args=parser.parse_args()
 manifest=json.loads((root/'artifacts/package/manifest.json').read_text())
 package=Path(manifest['package'])
-output=root/'build/client-package-clear-003-extracted'
+output=root/'build/client-package-playable-004-extracted'
 app=output/'uroot'
 tool=Path(os.environ.get('OO_PS4_TOOLCHAIN','/opt/openorbis/OpenOrbis/PS4Toolchain'))/'bin/linux/PkgTool.Core'
 def sha(path):

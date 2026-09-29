@@ -1,11 +1,10 @@
 # Doom 3 PS4 port
 
-Latest candidate: [Clear External 0.03](docs/PS4_PACKAGE.md), about 38 MB with [retail data outside the package](docs/USB-DATA.md). Extracted-package emulator menu test passes; PS4 testing remains pending.
-
-This repository ports Doom 3 toward PS4 with OpenOrbis. A **graphical DUDE
-client diagnostic now renders the real main menu in shadPS4**, completes 60
-engine frames and exits cleanly. Gameplay, input, audio and physical PS4 remain
-unverified. See [graphical client instructions and known defects](docs/PS4_CLIENT.md).
+Latest candidate: [Playable Alpha 0.04](docs/PLAYABLE-ALPHA.md), about 38 MB,
+with [retail data outside the package](docs/USB-DATA.md). The client now runs
+continuously with native controller input and the compiled color-clear path.
+Emulator tests demonstrate textured 3D gameplay, movement, aiming and attack
+commands. Audio remains disabled; physical PS4 gameplay is not yet verified.
 
 The separate [dhewm3](https://github.com/dhewm/dhewm3) dedicated diagnostic also
 reads retail archives, compiles `doom_main.script` and runs 60 engine frames.

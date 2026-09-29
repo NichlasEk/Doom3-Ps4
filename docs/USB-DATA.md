@@ -1,6 +1,6 @@
 # External Doom 3 data
 
-Clear External 0.03 contains no retail PK4 archives. Put your owned files at
+Playable Alpha 0.04 contains no retail PK4 archives. Put your owned files at
 `DOOM3/base/pak000.pk4` through `pak004.pk4` on USB, keeping lowercase archive
 names. Alternatively copy them to `/data/doom3-game/base/` on the PS4.
 The internal data directory takes priority; USB slots 0 through 7 are searched.
@@ -19,3 +19,8 @@ Set `DOOM3_JBC_SOURCE` to that checkout or use the local ScummVM source cache.
 The upstream dependency has no declared license; this is a private hardware
 test artifact. Source and archives remain outside Git. Build adaptations and
 input hashes follow the existing UT99 script.
+
+The package runs continuously. Use the right stick as the menu cursor and R2
+to click; Options opens the menu. See PLAYABLE-ALPHA.md in the repository for
+controls and known limitations. Audio is currently disabled. Do not copy the
+PC executable or game00.pk4; the game module is compiled into the PS4 client.

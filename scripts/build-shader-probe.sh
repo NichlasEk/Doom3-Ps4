@@ -6,11 +6,13 @@ converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
 case "$mode" in
-  depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
-  *) echo 'Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
+  sampledpresent|depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
+  *) echo 'Use sampledpresent, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
 esac
 out="$root/build/shader-probe-$mode"
 defines=()
+extra_objects=()
+if [[ "$mode" == sampledpresent ]]; then mode=present; defines+=(-DPROBE_SAMPLED_PRESENT); fi
 if [[ "$mode" == depthregion ]]; then mode=depthcopy; defines+=(-DPROBE_DEPTH_STENCIL -DPROBE_DEPTH_REGION); fi
 if [[ "$mode" == stencilcast ]]; then mode=shadowcast; defines+=(-DPROBE_DEPTH_STENCIL); fi
 if [[ "$mode" == depthstencil ]]; then mode=depthcopy; defines+=(-DPROBE_DEPTH_STENCIL); fi
@@ -70,11 +72,15 @@ if sys.argv[3] not in ('demote','dynamic','present'):
     params+=f'#define PROBE_PARAM_FLOATS {offset}\n'
     (out/'probe_params.h').write_text(params)
 PY
+if [[ "${1:-}" == sampledpresent ]]; then
+ clang++ --target=x86_64-pc-freebsd12-elf --sysroot="$sdk" -fPIC -D__PS4__ -D__ORBIS__ -nostdinc++ -isystem "$sdk/include/c++/v1" -isystem "$sdk/include" -I"$stack/Vulkan-Headers/include" -O2 -c "$root/platform/ps4/present.cpp" -o "$out/present.o"
+ extra_objects+=("$out/present.o")
+fi
 clang --target=x86_64-pc-freebsd12-elf --sysroot="$sdk" -fPIC -D__PS4__ -D__ORBIS__ \
   -I"$sdk/include" -I"$stack/Vulkan-Headers/include" -I"$stack/vulkan-ps4/include" -I"$out" \
-  "${defines[@]}" -O2 -c "$root/tests/ps4_shader_probe.c" -o "$out/probe.o"
+  -I"$root/platform/ps4" "${defines[@]}" -O2 -c "$root/tests/ps4_shader_probe.c" -o "$out/probe.o"
 ld.lld -m elf_x86_64 --script "$sdk/link.x" --eh-frame-hdr -pie -z max-page-size=0x4000 \
-  -L"$sdk/lib" "$sdk/lib/crt1.o" "$out/probe.o" \
+  -L"$sdk/lib" "$sdk/lib/crt1.o" "$out/probe.o" "${extra_objects[@]}" \
   --start-group "$stack/vulkan-ps4/libvulkan_ps4.a" "$stack/opengnm/libopengnm.a" \
   "$stack/libpsbc-private.a" --end-group \
   -lc++ -lc++abi -lunwind -lc -lSceGnmDriver -lSceVideoOut -lkernel \
