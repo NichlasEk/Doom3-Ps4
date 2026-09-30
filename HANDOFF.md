@@ -6,26 +6,29 @@ Kodcheckpoint vid denna genomgång: **`428e93b`**, `main`, i synk med
 
 ## Börja här
 
-**Fortsätt från bundled-data-kandidaten 0.07.** Det här är numera en
-kontinuerlig klient med native handkontrollinput och rapporterad gameplay på
-fysisk PS4 med 0.06. Återgå inte till slutsatsen att projektet bara visar en meny.
+**Spelet fungerar nu på fysisk PS4 med speldata i PKG**, enligt användarens
+återkoppling 2026-09-30. Användaren anger att USB-stickan var för långsam för
+filläsningen och att paketerad speldata löste problemet. Detta är det aktuella
+hårdvaruresultatet; behandla inte USB-/arkivproblemet som en fortsatt blockerare
+för det fungerande bundled-spåret.
 
-Det viktigaste öppna problemet är **speldata/USB och återöppning av PK4-arkiv**:
+**Fortsätt med paketerad speldata som huvudspår.** Senaste lokala kandidaten är
+0.07. Användaren angav inte uttryckligen versionsnumret i den senaste
+bekräftelsen, så knyt inte rapporten till en exakt binärhash utan ytterligare
+uppgift. Rapporten bekräftar fungerande spel, inte ännu alla banor, långtidstest,
+sparning/laddning eller ljud.
 
-- 0.05 installerades på fysisk PS4 och nådde meny/video, men gav senare
-  `Couldn't reopen /doom3_usb0/DOOM3/base/pak000.pk4`.
-- Användaren rapporterade faktisk Vulkan-gameplay med 0.06, men också
-  USB-läsningar och krasch när USB saknades. Ta den observationen på allvar.
-- 0.07 instrumenterar dataval och arkivåteröppning. Emulatorn har visat läsning
-  från `/app0`, men **ingen fysisk 0.07-verifiering finns dokumenterad här**.
-- `access()` kontra `fopen()` är en hypotes kring markerfilen, inte en bevisad
-  grundorsak. Varken lång laddtid eller kodens avsikt bevisar aktuell datakälla.
+Historik: 0.05 gav `Couldn't reopen /doom3_usb0/DOOM3/base/pak000.pk4`.
+0.06 följdes av rapporterad gameplay och problem med USB-läsning. 0.07 lade
+till datavals-/reopen-audit och visade `/app0`-läsning i emulatorn. Den tidigare
+hypotesen om `access()`/`fopen()` ska inte anges som fastställd grundorsak;
+användarens senaste test pekar på USB-stickans läsprestanda.
 
 Läs först [0.07-auditen](docs/BUNDLED-DATA-007.md), sedan
 [0.06-bakgrunden](docs/BUNDLED-DATA-006.md) och
 [installationsändringen 0.05](docs/INSTALL-005.md).
 
-## Exakt kandidat att testa
+## Senaste lokala paket
 
 | Fält | Värde |
 | --- | --- |
@@ -68,7 +71,7 @@ den exakta orsaken till det tidigare felet är inte fastställd.
 | Område | Evidens och begränsning |
 | --- | --- |
 | Fysisk installation | Användaren bekräftade 0.05-installation och meny/video. |
-| Fysisk gameplay | Användaren rapporterade faktisk Vulkan-gameplay i 0.06. USB-oberoende och stabilitet är inte bevisade. |
+| Fysisk gameplay | Användaren bekräftar 2026-09-30 att spelet fungerar med speldata i PKG; den långsamma USB-stickan anges som orsaken till tidigare läsproblem. Exakt version anges inte i senaste rapporten. |
 | 0.07-emulator | `game/mars_city1` laddades; `PS4 GAME` tick 30/60/90 med health 100 finns i loggen. `/app0` används vid arkivåteröppning. Körningen var tidsbegränsad; hävda inte ett fullständigt speltest eller rent avslut. |
 | Tidigare inputtest | 0.04: 360 bildrutor, rörelse/rotation/attack och release-kontroller, rent avslut. `artifacts/playable-package/`. |
 | Kampanj | Tidigare `mars_city1`-test nådde 600 bildrutor; bildartefakter i öppningssekvensen finns dokumenterade. |
@@ -82,24 +85,19 @@ jämfört med föregående kandidat.
 
 ## Nästa steg, i ordning
 
-1. Säkerställ att det är exakt **0.07** som installeras: titel/version, filhash
-   och vid behov `build-info.json`. Blanda inte resultat från olika kandidater.
-2. Stäng spelet helt, ta bort USB, starta om spelet och ladda/spela en bana.
-   Installation med USB anslutet är inte samma test som drift utan USB.
-3. Vid fel: fånga loggarna innan nästa start skriver över dem. Diagnose 0.12
-   visar **ENGINE 1/6** och **GPU 2/6**. Fullständiga loggar är bättre än enbart
-   sista skärmsidan eftersom startup-auditen kan ha scrollat bort.
-4. Leta efter följande och spara exakta värden:
-   - `DATA AUDIT 0.07 bundled=1` och vald datakälla.
-   - `fs_basepath`, `fs_cdpath`, `fs_devpath`, `fs_savepath`, `fs_configpath`.
-   - `DATA AUDIT reopen ...` och eventuell `Couldn't reopen ...`.
-   - Första engine-/GPU-felet och sista lyckade `PS4 GAME`/presentering.
-5. Om extern sökväg ändå används: följ markerläsningen, den faktiskt installerade
-   binären och filesystem-roots. Om `/app0` används men reopen misslyckas:
-   undersök arkivets återöppning, felkod och livslängd. Ändra inte renderern på
-   antagandet att varje krasch är ett GPU-fel.
-6. När datakällan är bekräftad: testa längre spelpass, sparning/laddning,
-   handkontrollkänsla, kvarvarande grafikfel och därefter ljud.
+1. Bevara det fungerande paketet och använd bundled-data vid fortsatt lokal
+   paketering. Scriptets standardläge är fortfarande extern data; ange därför
+   `--bundle-data --game-data media/game` uttryckligen.
+2. Testa längre spelpass och fler banor, sparning/laddning, handkontrollkänsla
+   och kvarvarande grafikartefakter. Ljud är fortfarande avstängt.
+3. Slutför stödet för bundled-paket i verifieringsscriptet, se nedan.
+4. Anteckna installerad version/hash vid nästa relevanta test, så att
+   hårdvaruresultatet kan knytas till exakt paket. Det hindrar inte fortsatt
+   arbete utifrån användarens bekräftade fungerande spel.
+5. Om läsfelet återkommer: spara loggar före omstart. Diagnose 0.12 visar
+   ENGINE 1/6 och GPU 2/6. Kontrollera `DATA AUDIT`, filesystem-roots och de
+   faktiska `reopen`-sökvägarna. Extern USB-läsning är ett separat framtida
+   kompatibilitets-/prestandaspår, inte huvudspårets aktuella blockerare.
 
 ## Loggar och kodkarta
 

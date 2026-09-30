@@ -1,12 +1,18 @@
-> Latest installation candidate: [0.05 package identity correction](docs/INSTALL-005.md).
-
 # Doom 3 PS4 port
 
-Latest candidate: [Playable Alpha 0.04](docs/PLAYABLE-ALPHA.md), about 38 MB,
-with [retail data outside the package](docs/USB-DATA.md). The client now runs
-continuously with native controller input and the compiled color-clear path.
-Emulator tests demonstrate textured 3D gameplay, movement, aiming and attack
-commands. Audio remains disabled; physical PS4 gameplay is not yet verified.
+**The user confirms the game works on physical PS4 with game data bundled in
+the PKG (2026-09-30).** Their slow USB stick caused the previous file-reading
+problem; bundling the data resolved it in their test.
+
+Continue from [the current handoff](HANDOFF.md) and the
+[bundled-data 0.07 candidate](docs/BUNDLED-DATA-007.md). The latest physical
+report does not specify an exact installed version. The client runs continuously
+with native controller input. Audio remains disabled; save/load, extended play
+and remaining rendering artifacts still need work.
+
+For local packaging use `--bundle-data --game-data media/game`; the script's
+default still builds the older external-data variant. Retail packages stay
+local and ignored by Git.
 
 The separate [dhewm3](https://github.com/dhewm/dhewm3) dedicated diagnostic also
 reads retail archives, compiles `doom_main.script` and runs 60 engine frames.

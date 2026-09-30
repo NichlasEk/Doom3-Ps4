@@ -1,5 +1,16 @@
 # Bundled data selection and audit 0.07
 
+## Physical update — 2026-09-30
+
+The user confirms the game now works on physical PS4 with game data bundled
+in the PKG. They identify their slow USB stick as the reason files could not
+be read in time; bundling the data resolved the problem in their test.
+Use bundled data as the primary local packaging path going forward.
+The latest report does not explicitly name the installed version or hash.
+Audio, save/load and extended play remain separate verification tasks.
+
+## Earlier investigation and emulator evidence
+
 User confirms actual Vulkan gameplay in0.06 but observes USB reads; game
 crashes with USB absent. This remains physical evidence of a dependency or
 failure requiring diagnosis. Package source intent did not establish behavior.
