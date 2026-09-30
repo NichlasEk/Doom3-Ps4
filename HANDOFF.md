@@ -36,7 +36,7 @@ Läs först [0.07-auditen](docs/BUNDLED-DATA-007.md), sedan
 | CONTENT_ID | `IV0000-DOOM00001_00-DOOM3PS4MENUTEST` |
 | Innehåll | Klient, ikon, loaderfiler, notices, fem retail-PK4 och bundled-markör |
 | Staging | `build/client-package-bundled-007/` |
-| Uppackning | `build/client-package-bundled-007-extracted/uroot/` |
+| Uppackning | `build/bundled-007-audit/` |
 
 SHA-256, **omräknad och kontrollerad vid handoffen**:
 
@@ -167,7 +167,7 @@ innan rebuild. `--skip-build` förutsätter att rätt klient redan är byggd.
 För en ny begränsad emulatorrunda med den befintliga uppackade 0.07-kandidaten:
 
 ```sh
-CLIENT_EBOOT="$PWD/build/client-package-bundled-007-extracted/uroot/eboot.bin" \
+CLIENT_EBOOT="$PWD/build/bundled-007-audit/eboot.bin" \
 CLIENT_USE_PACKAGED_DATA=1 \
 CLIENT_TEST_MAP=game/mars_city1 CLIENT_TEST_FRAMES=360 CLIENT_TIMEOUT=600 \
 CLIENT_PROFILE="$PWD/build/handoff-007-profile" \
