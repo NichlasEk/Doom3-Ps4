@@ -1,3 +1,36 @@
+## 2026-10-10: bounded texture address cache adopted (0.18)
+
+User authorized shortening the loading screen after the menu. Implemented an
+8MiB/64-entry LRU cache of mip-relative texel offsets, keyed by full zeroed Gpa
+surface context, dimensions and size. No pixel data or GPU resources cached.
+Try-lock/allocation/error fallback retains old packer; cache freed at end of
+load, all staging fences retained. r_ps4TextureOffsetCache now defaults1;
+packed1/batch0/parallel0 unchanged. See docs/TEXTURE-CACHE-018.md.
+
+Same opt-in0.18 B/A/B physical first-map runs: total81.448/121.384/53.432s;
+CPU-pack4.563/37.884/4.560s; upload7.180/40.711/7.242s. Repeatable improvement
+about33s in CPU-pack; whole totals vary independently with file/game init.
+Emulator GPU byte oracle passed22 shape/heap cases,44 updates,61,190,144bytes
+including100 evictions and repeated clear; full map60frames clean exit passed.
+No physical full-byte comparison or general gameplay FPS gain claimed.
+
+Final default-on0.18 installed SHA256
+ d36f4f2320730c5850d38b9ff2ac94f0fcb07cd1b1efbe72dce23b876834dcc1
+38862848bytes; full installed hash and config/save preservation verified.
+First-map final53.012s/image31.315s/upload7.416s/CPU-pack4.563s; read14.802s.
+Cache hits16017/misses1011/evictions947;1,694,472bytes freed. Defaults read back.
+Artifacts/texture-cache-018/final-load/ and final/. Opt-in0.18 package/runtime
+retained under opt-in/ (SHA29c8829e...); stable0.17 package remains in dist and
+matching runtime in baseline017/. Current local runtime matches final0.18.
+
+Current DoomPID278, worker218 last launch ticket17/scratch0x50000. Initial
+launch timed out after submission0; guarded reconnect restored worker system
+bit and verified baseline (final/credential-recovery.json). Doom launch was
+not retried. ShellCore42 last resume ticket16; receiver217/worker218 suspended.
+Receiver owns completed install task581. Revalidate live identities before
+mutation; never query worker completion while suspended. SDL session is PID278.
+Game remains running for the user; no new video change or video-fix claim.
+
 ## 2026-10-10: clarified target and fresh-process first-map measurement
 
 User means the loading screen AFTER the main menu, before the game begins,

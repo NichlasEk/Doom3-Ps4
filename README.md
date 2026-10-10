@@ -4,11 +4,13 @@ The native client runs on physical PS4 with controller input and audio enabled.
 Current work uses external owned game data on the console, plus remote package
 installation, launch, input and log capture. Continue from [the current handoff](HANDOFF.md).
 
-[0.17 static texture uploads](docs/TEXTURE-COPY-017.md) reduced the measured Mars
-City texture-upload interval from 72.82 s to 40.47 s in repeated physical on/off tests.
-Whole-map loading also depends on variable file and game initialization time;
-this is not a gameplay FPS improvement or a fix for remaining video artifacts.
-The new path is enabled by default; bounded submission batching remains off.
+[0.18 texture address caching](docs/TEXTURE-CACHE-018.md) reduces the measured
+Mars City texture-upload interval from about40.7s to7.2s. Repeated physical
+cache-on runs spent4.56s packing pixels, versus37.88s with the cache off.
+Whole-map loading still varies with file reads and game initialization; this
+is not a gameplay FPS improvement or a fix for remaining video artifacts.
+The cache is bounded to8MiB and cleared after loading; GPU fences remain intact.
+The new path defaults on; bounded submission batching remains off.
 
 `scripts/package-ps4-client.py` defaults to an external-data package. For local
 bundling use `--bundle-data --game-data media/game`. Retail assets and generated

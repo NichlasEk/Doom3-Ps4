@@ -45,7 +45,7 @@ with (out/'emulator.log').open('w') as log:
             raise RuntimeError('Probe did not capture and exit cleanly; inspect artifacts/shader-probe')
         if 'Unhandled access violation' in host or 'FAIL' in text or 'FAILED' in text:
             raise RuntimeError('Guest failure; inspect logs')
-        if mode == 'textureupload' and 'PASS static texture upload cases=18 updates=36' not in text:
+        if mode == 'textureupload' and 'PASS static texture upload cases=22 updates=44' not in text:
             raise RuntimeError('Static mip-chain byte comparison did not complete')
         from PIL import Image
         image = Image.open(out/'capture.png').convert('RGB')

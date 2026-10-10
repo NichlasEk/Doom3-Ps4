@@ -402,16 +402,17 @@ index 0000000..cdd9989
 +};
 +static const unsigned meta_clear_color_offsets[4] = {63,67,71,75};
 diff --git a/src/vk_ps4_command.c b/src/vk_ps4_command.c
-index 168c1f3..1aa001b 100644
+index 168c1f3..6f5d329 100644
 --- a/src/vk_ps4_command.c
 +++ b/src/vk_ps4_command.c
-@@ -11,15 +11,18 @@
+@@ -11,15 +11,19 @@
   */
  
  #include "vk_ps4_internal.h"
 +#include "gpuaddr.h"
  
  #include <string.h>
++#include <stdlib.h>
 +#include <math.h>
  
  /* PM4 register definitions for direct register programming
@@ -425,7 +426,7 @@ index 168c1f3..1aa001b 100644
  
  /* Forward declaration from vk_ps4_pipeline.c */
  extern GnmPrimitiveType vk_topology_to_gnm(VkPrimitiveTopology topology);
-@@ -322,89 +325,168 @@ static bool vk_ps4_rt_is_tiled(const GnmRenderTarget *rt) {
+@@ -322,89 +326,168 @@ static bool vk_ps4_rt_is_tiled(const GnmRenderTarget *rt) {
  static void vk_ps4_clear_color_fillmem(GnmCommandBuffer *cmd,
                                          VkPs4Image *img,
                                          const VkClearColorValue *cc) {
@@ -669,7 +670,7 @@ index 168c1f3..1aa001b 100644
  }
  
  /* Choose the appropriate color clear method based on the RT's tile mode.
-@@ -435,14 +517,14 @@ static void vk_ps4_clear_color(VkPs4CommandBuffer *cmd,
+@@ -435,14 +518,14 @@ static void vk_ps4_clear_color(VkPs4CommandBuffer *cmd,
   * Triggers the GCN lazy clear by doing a draw that accesses depth.
   * Temporarily enables depth write to guarantee the lazy clear fires,
   * even if the currently bound pipeline has depth disabled. */
@@ -686,7 +687,7 @@ index 168c1f3..1aa001b 100644
      ds_write.zfunc = GNM_DEPTH_COMPARE_ALWAYS;
      ds_write.stencilenable = 0;
      ds_write.depthboundsenable = 0;
-@@ -452,12 +534,12 @@ static void vk_ps4_clear_depth_draw(GnmCommandBuffer *cmd) {
+@@ -452,12 +535,12 @@ static void vk_ps4_clear_depth_draw(GnmCommandBuffer *cmd) {
      sceGnmDrawCmdSetEmbeddedVsShader(cmd, GNM_EMBEDDED_VSH_FULLSCREEN, 0);
      sceGnmDrawCmdSetEmbeddedPsShader(cmd, GNM_EMBEDDED_PSH_DUMMY);
  
@@ -702,7 +703,7 @@ index 168c1f3..1aa001b 100644
  }
  
  /* Bind render targets for the current subpass.
-@@ -586,6 +668,8 @@ static void vk_ps4_rebind_pipeline_state(VkPs4CommandBuffer *cmd) {
+@@ -586,6 +669,8 @@ static void vk_ps4_rebind_pipeline_state(VkPs4CommandBuffer *cmd) {
      /* Re-emit PS if present */
      if (pipe->has_ps) {
          sceGnmDrawCmdSetPsShader(&cmd->gnm_cmd, &pipe->ps_regs);
@@ -711,7 +712,7 @@ index 168c1f3..1aa001b 100644
      }
  
      /* Re-emit fetch shader */
-@@ -624,10 +708,12 @@ static void vk_ps4_rebind_pipeline_state(VkPs4CommandBuffer *cmd) {
+@@ -624,10 +709,12 @@ static void vk_ps4_rebind_pipeline_state(VkPs4CommandBuffer *cmd) {
              vk_ps4_emit_context_reg(&cmd->gnm_cmd,
                  R_02842C_DB_STENCIL_CONTROL, pipe->stencil_control);
              vk_ps4_emit_context_reg(&cmd->gnm_cmd,
@@ -726,7 +727,7 @@ index 168c1f3..1aa001b 100644
              }
          }
          if (pipe->depth_stencil_control.depthboundsenable) {
-@@ -746,6 +832,45 @@ vk_ps4_CreateCommandPool(VkDevice device, const VkCommandPoolCreateInfo *pCreate
+@@ -746,6 +833,45 @@ vk_ps4_CreateCommandPool(VkDevice device, const VkCommandPoolCreateInfo *pCreate
      return VK_SUCCESS;
  }
  
@@ -772,7 +773,7 @@ index 168c1f3..1aa001b 100644
  VKAPI_ATTR void VKAPI_CALL
  vk_ps4_DestroyCommandPool(VkDevice device, VkCommandPool commandPool, const VkAllocationCallbacks *pAllocator) {
      if (!device || !commandPool) return;
-@@ -757,7 +882,12 @@ vk_ps4_DestroyCommandPool(VkDevice device, VkCommandPool commandPool, const VkAl
+@@ -757,7 +883,12 @@ vk_ps4_DestroyCommandPool(VkDevice device, VkCommandPool commandPool, const VkAl
      for (uint32_t i = 0; i < pool->command_buffer_count; i++) {
          VkPs4CommandBuffer *cmd = pool->command_buffers[i];
          if (cmd) {
@@ -786,7 +787,7 @@ index 168c1f3..1aa001b 100644
              vk_ps4_free(alloc, cmd);
              pool->command_buffers[i] = NULL;
          }
-@@ -768,7 +898,12 @@ vk_ps4_DestroyCommandPool(VkDevice device, VkCommandPool commandPool, const VkAl
+@@ -768,7 +899,12 @@ vk_ps4_DestroyCommandPool(VkDevice device, VkCommandPool commandPool, const VkAl
      for (uint32_t i = 0; i < pool->free_count; i++) {
          if (pool->free_list[i]) {
              if (pool->free_list[i]->pm4_buffer)
@@ -800,7 +801,7 @@ index 168c1f3..1aa001b 100644
              vk_ps4_free(alloc, pool->free_list[i]);
              pool->free_list[i] = NULL;
          }
-@@ -806,7 +941,13 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
+@@ -806,7 +942,13 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
                  for (uint32_t j = 0; j < i; j++) {
                      VkPs4CommandBuffer *c = (VkPs4CommandBuffer *)pCommandBuffers[j];
                      if (c) {
@@ -815,7 +816,7 @@ index 168c1f3..1aa001b 100644
                          vk_ps4_free(alloc, c);
                      }
                      pCommandBuffers[j] = VK_NULL_HANDLE;
-@@ -823,23 +964,41 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
+@@ -823,23 +965,41 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
          cmd->is_recording = false;
          cmd->is_begin = false;
          cmd->current_pipeline = NULL;
@@ -861,7 +862,7 @@ index 168c1f3..1aa001b 100644
              }
          } else {
              /* Reused buffer — clear the PM4 contents */
-@@ -852,18 +1011,23 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
+@@ -852,18 +1012,23 @@ vk_ps4_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo
              if (pool->command_buffer_count < VK_PS4_MAX_COMMAND_BUFFERS_PER_POOL) {
                  pool->command_buffers[pool->command_buffer_count++] = cmd;
              } else {
@@ -894,7 +895,7 @@ index 168c1f3..1aa001b 100644
                          vk_ps4_free(alloc, c);
                      }
                      pCommandBuffers[j] = VK_NULL_HANDLE;
-@@ -909,7 +1073,12 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
+@@ -909,7 +1074,12 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
          if (pool && pool->free_count < VK_PS4_MAX_COMMAND_BUFFERS_PER_POOL) {
              pool->free_list[pool->free_count++] = cmd;
          } else {
@@ -908,7 +909,7 @@ index 168c1f3..1aa001b 100644
              vk_ps4_free(alloc, cmd);
          }
      }
-@@ -917,7 +1086,8 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
+@@ -917,7 +1087,8 @@ vk_ps4_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool,
  
  VKAPI_ATTR VkResult VKAPI_CALL
  vk_ps4_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo *pBeginInfo) {
@@ -918,7 +919,7 @@ index 168c1f3..1aa001b 100644
      if (!commandBuffer) return VK_ERROR_INITIALIZATION_FAILED;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      if (!cmd->pm4_buffer) return VK_ERROR_INITIALIZATION_FAILED;
-@@ -934,12 +1104,21 @@ vk_ps4_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBe
+@@ -934,12 +1105,21 @@ vk_ps4_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBe
          sceGnmDrawCmdInitDefaultHardwareState(&cmd->gnm_cmd);
      }
  
@@ -940,7 +941,7 @@ index 168c1f3..1aa001b 100644
      cmd->vertex_buffers_dirty = false;
      memset(&cmd->index_buffer, 0, sizeof(cmd->index_buffer));
      memset(cmd->vertex_buffers, 0, sizeof(cmd->vertex_buffers));
-@@ -959,7 +1138,8 @@ vk_ps4_EndCommandBuffer(VkCommandBuffer commandBuffer) {
+@@ -959,7 +1139,8 @@ vk_ps4_EndCommandBuffer(VkCommandBuffer commandBuffer) {
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      cmd->is_recording = false;
      cmd->pm4_used = (uint32_t)(cmd->gnm_cmd.cmdptr - cmd->gnm_cmd.beginptr);
@@ -950,7 +951,7 @@ index 168c1f3..1aa001b 100644
  }
  
  VKAPI_ATTR VkResult VKAPI_CALL
-@@ -974,7 +1154,14 @@ vk_ps4_ResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFla
+@@ -974,7 +1155,14 @@ vk_ps4_ResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFla
      cmd->is_recording = false;
      /* Reset all tracking state */
      cmd->current_pipeline = NULL;
@@ -965,7 +966,7 @@ index 168c1f3..1aa001b 100644
      cmd->vertex_buffers_dirty = false;
      memset(&cmd->index_buffer, 0, sizeof(cmd->index_buffer));
      memset(cmd->vertex_buffers, 0, sizeof(cmd->vertex_buffers));
-@@ -999,7 +1186,12 @@ vk_ps4_ResetCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPoo
+@@ -999,7 +1187,12 @@ vk_ps4_ResetCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPoo
      for (uint32_t i = 0; i < pool->free_count; i++) {
          if (pool->free_list[i]) {
              if (pool->free_list[i]->pm4_buffer)
@@ -979,7 +980,7 @@ index 168c1f3..1aa001b 100644
              vk_ps4_free(alloc, pool->free_list[i]);
              pool->free_list[i] = NULL;
          }
-@@ -1020,7 +1212,12 @@ vk_ps4_TrimCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPool
+@@ -1020,7 +1213,12 @@ vk_ps4_TrimCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPool
      for (uint32_t i = 0; i < pool->free_count; i++) {
          if (pool->free_list[i]) {
              if (pool->free_list[i]->pm4_buffer)
@@ -993,7 +994,7 @@ index 168c1f3..1aa001b 100644
              vk_ps4_free(alloc, pool->free_list[i]);
              pool->free_list[i] = NULL;
          }
-@@ -1098,6 +1295,8 @@ vk_ps4_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeli
+@@ -1098,6 +1296,8 @@ vk_ps4_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipeli
          /* Set pixel shader only if the pipeline has one */
          if (pipe->has_ps) {
              sceGnmDrawCmdSetPsShader(&cmd->gnm_cmd, &pipe->ps_regs);
@@ -1002,7 +1003,7 @@ index 168c1f3..1aa001b 100644
          }
  
          /* Bind fetch shader if the pipeline has one */
-@@ -1201,6 +1400,7 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
+@@ -1201,6 +1401,7 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
      /* GNM viewport: scale/offset maps Vulkan viewport to GNM */
      for (uint32_t i = 0; i < viewportCount; i++) {
          const VkViewport *vp = &pViewports[i];
@@ -1010,7 +1011,7 @@ index 168c1f3..1aa001b 100644
          GnmSetViewportInfo vp_info;
          vp_info.dmin = vp->minDepth;
          vp_info.dmax = vp->maxDepth;
-@@ -1208,10 +1408,10 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
+@@ -1208,10 +1409,10 @@ vk_ps4_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uin
           * GNM viewport: scale = half-dimension, offset = center */
          vp_info.scale[0] = vp->width * 0.5f;
          vp_info.scale[1] = vp->height * 0.5f;
@@ -1023,7 +1024,7 @@ index 168c1f3..1aa001b 100644
          sceGnmDrawCmdSetViewport(&cmd->gnm_cmd, firstViewport + i, &vp_info);
      }
  }
-@@ -1223,6 +1423,14 @@ vk_ps4_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor, uint3
+@@ -1223,6 +1424,14 @@ vk_ps4_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor, uint3
  
      for (uint32_t i = 0; i < scissorCount; i++) {
          const VkRect2D *sc = &pScissors[i];
@@ -1038,7 +1039,7 @@ index 168c1f3..1aa001b 100644
          sceGnmDrawCmdSetScreenScissor(&cmd->gnm_cmd,
              sc->offset.x, sc->offset.y,
              sc->offset.x + sc->extent.width,
-@@ -1372,43 +1580,17 @@ vk_ps4_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding
+@@ -1372,43 +1581,17 @@ vk_ps4_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding
      if (!commandBuffer || !pBuffers) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1087,7 +1088,7 @@ index 168c1f3..1aa001b 100644
          }
      }
      /* Update vertex_binding_count only for bindings that were actually stored.
-@@ -1428,6 +1610,10 @@ VKAPI_ATTR void VKAPI_CALL
+@@ -1428,6 +1611,10 @@ VKAPI_ATTR void VKAPI_CALL
  vk_ps4_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkIndexType indexType) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
@@ -1098,7 +1099,7 @@ index 168c1f3..1aa001b 100644
      cmd->index_buffer.buffer = buffer;
      cmd->index_buffer.offset = offset;
      cmd->index_buffer.type = indexType;
-@@ -1448,24 +1634,88 @@ vk_ps4_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDevi
+@@ -1448,24 +1635,88 @@ vk_ps4_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDevi
      }
  }
  
@@ -1199,7 +1200,7 @@ index 168c1f3..1aa001b 100644
  
      /* Always set instance count to avoid state leak from previous draw */
      sceGnmDrawCmdSetNumInstances(&cmd->gnm_cmd, instanceCount);
-@@ -1527,19 +1777,14 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
+@@ -1527,19 +1778,14 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
                        uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
@@ -1226,7 +1227,7 @@ index 168c1f3..1aa001b 100644
  
      /* Always set instance count to avoid state leak from previous draw */
      sceGnmDrawCmdSetNumInstances(&cmd->gnm_cmd, instanceCount);
-@@ -1595,6 +1840,13 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
+@@ -1595,6 +1841,13 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
       * vertexOffset is handled by the shader via gl_VertexIndex user-data. */
      VkPs4Buffer *buf = (VkPs4Buffer *)cmd->index_buffer.buffer;
      if (buf && buf->memory && buf->memory->gnm_mem.mapped) {
@@ -1240,7 +1241,7 @@ index 168c1f3..1aa001b 100644
          void *gpu_addr = (char *)buf->memory->gnm_mem.mapped + buf->memory_offset +
                           cmd->index_buffer.offset;
          GnmDrawModifier mod = {0};
-@@ -1605,8 +1857,8 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
+@@ -1605,8 +1858,8 @@ vk_ps4_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32
              sceGnmDrawCmdDrawIndex2(&cmd->gnm_cmd, indexCount, gpu_addr, mod);
          }
      } else {
@@ -1251,7 +1252,7 @@ index 168c1f3..1aa001b 100644
      }
  }
  
-@@ -1617,18 +1869,7 @@ vk_ps4_CmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceS
+@@ -1617,18 +1870,7 @@ vk_ps4_CmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceS
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      VkPs4Buffer *buf = (VkPs4Buffer *)buffer;
  
@@ -1271,7 +1272,7 @@ index 168c1f3..1aa001b 100644
  
      if (!buf->memory || !buf->memory->gnm_mem.mapped) return;
  
-@@ -1660,18 +1901,7 @@ vk_ps4_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, Vk
+@@ -1660,18 +1902,7 @@ vk_ps4_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, Vk
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
      VkPs4Buffer *buf = (VkPs4Buffer *)buffer;
  
@@ -1291,7 +1292,7 @@ index 168c1f3..1aa001b 100644
  
      if (!buf->memory || !buf->memory->gnm_mem.mapped) return;
  
-@@ -1865,6 +2095,9 @@ vk_ps4_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
+@@ -1865,6 +2096,9 @@ vk_ps4_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
      }
  }
  
@@ -1301,7 +1302,7 @@ index 168c1f3..1aa001b 100644
  VKAPI_ATTR void VKAPI_CALL
  vk_ps4_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayout srcImageLayout,
                      VkImage dstImage, VkImageLayout dstImageLayout,
-@@ -1875,6 +2108,163 @@ vk_ps4_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayo
+@@ -1875,6 +2109,163 @@ vk_ps4_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayo
      VkPs4Image *dst = (VkPs4Image *)dstImage;
      if (!src || !dst) return;
  
@@ -1465,7 +1466,7 @@ index 168c1f3..1aa001b 100644
      /* Linear-to-linear image copy via per-row CopyMemory.
       * Tiled texture copies require a shader-based blit or CP DMA with
       * surface info — deferred to a future shader-blit phase. */
-@@ -2046,117 +2436,360 @@ vk_ps4_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, V
+@@ -2046,117 +2437,439 @@ vk_ps4_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, V
      if (!src || !dst || !src->memory || !dst->memory) return;
      if (!src->memory->gnm_mem.mapped || !dst->memory->gnm_mem.mapped) return;
  
@@ -1653,8 +1654,78 @@ index 168c1f3..1aa001b 100644
 +size_t doom3_ps4_texture_bytes(VkImage image) {
 +    return doom3_texture_layout((VkPs4Image*)image);
 +}
-+int doom3_ps4_pack_texture_mip(VkImage image, unsigned mip, unsigned w, unsigned h,
-+                              const void *rgba, void *packed, size_t capacity) {
++/* Bounded CPU address cache, never pixel data or GPU resources. A try-lock
++ * keeps concurrent callers on the uncached path instead of sharing mutable
++ * entries. Context is zero-initialized before comparison; padding can at worst
++ * cause a miss. Offsets are relative to this mip, not an image allocation. */
++#define DOOM3_OFFSET_BUDGET (8u*1024u*1024u)
++#define DOOM3_OFFSET_SLOTS 64
++static struct {
++    GpaSurfaceContext context;
++    unsigned w,h;
++    uint64_t size, age;
++    uint32_t *offsets;
++} doom3_offsets[DOOM3_OFFSET_SLOTS];
++static unsigned doom3_offset_bytes;
++static uint64_t doom3_offset_age, doom3_offset_hits, doom3_offset_misses, doom3_offset_evictions;
++static volatile int doom3_offset_lock;
++void doom3_ps4_clear_texture_cache(void) {
++    if (__sync_lock_test_and_set(&doom3_offset_lock,1)) return;
++    vk_ps4_log("TEXTURECACHE hits=%llu misses=%llu evictions=%llu bytes=%u",
++        (unsigned long long)doom3_offset_hits,(unsigned long long)doom3_offset_misses,
++        (unsigned long long)doom3_offset_evictions,doom3_offset_bytes);
++    for(unsigned i=0;i<DOOM3_OFFSET_SLOTS;++i) {
++        free(doom3_offsets[i].offsets);
++        memset(&doom3_offsets[i],0,sizeof(doom3_offsets[i]));
++    }
++    doom3_offset_bytes=0;doom3_offset_age=0;
++    doom3_offset_hits=doom3_offset_misses=doom3_offset_evictions=0;
++    __sync_lock_release(&doom3_offset_lock);
++}
++static int doom3_pack_cached(const GpaSurfaceContext *context, uint64_t size,
++    unsigned w,unsigned h,const void *rgba,void *packed) {
++    if (__sync_lock_test_and_set(&doom3_offset_lock,1)) return 0;
++    unsigned slot=DOOM3_OFFSET_SLOTS;
++    for(unsigned i=0;i<DOOM3_OFFSET_SLOTS;++i)
++        if(doom3_offsets[i].offsets && doom3_offsets[i].w==w && doom3_offsets[i].h==h &&
++           doom3_offsets[i].size==size && !memcmp(&doom3_offsets[i].context,context,sizeof(*context))) {slot=i;break;}
++    const unsigned bytes=w*h*sizeof(uint32_t);
++    if(slot==DOOM3_OFFSET_SLOTS) {
++        ++doom3_offset_misses;
++        for (;;) {
++            unsigned empty=DOOM3_OFFSET_SLOTS,oldest=DOOM3_OFFSET_SLOTS;
++            for(unsigned i=0;i<DOOM3_OFFSET_SLOTS;++i) {
++                if(!doom3_offsets[i].offsets) {empty=i;continue;}
++                if(oldest==DOOM3_OFFSET_SLOTS || doom3_offsets[i].age<doom3_offsets[oldest].age) oldest=i;
++            }
++            if(empty!=DOOM3_OFFSET_SLOTS && bytes<=DOOM3_OFFSET_BUDGET-doom3_offset_bytes) {slot=empty;break;}
++            if(oldest==DOOM3_OFFSET_SLOTS) goto fail;
++            ++doom3_offset_evictions;
++            doom3_offset_bytes-=doom3_offsets[oldest].w*doom3_offsets[oldest].h*sizeof(uint32_t);
++            free(doom3_offsets[oldest].offsets);doom3_offsets[oldest].offsets=NULL;
++        }
++        uint32_t *offsets=malloc(bytes);
++        if(!offsets) goto fail;
++        for(unsigned y=0;y<h;++y) for(unsigned x=0;x<w;++x) {
++            uint64_t offset=0,bit=0;
++            if(sceGpaComputeSurfaceCoord(&offset,&bit,context,x,y,0,0)!=GPA_ERR_OK || bit || offset>size-4 || offset>UINT32_MAX) {
++                free(offsets);goto fail;
++            }
++            offsets[(size_t)y*w+x]=(uint32_t)offset;
++        }
++        doom3_offsets[slot].context=*context;doom3_offsets[slot].w=w;doom3_offsets[slot].h=h;
++        doom3_offsets[slot].size=size;doom3_offsets[slot].offsets=offsets;doom3_offset_bytes+=bytes;
++    }
++    else ++doom3_offset_hits;
++    doom3_offsets[slot].age=++doom3_offset_age;
++    for(size_t i=0;i<(size_t)w*h;++i)
++        memcpy((char*)packed+doom3_offsets[slot].offsets[i],(const char*)rgba+i*4,4);
++    __sync_lock_release(&doom3_offset_lock);return 1;
++fail:
++    __sync_lock_release(&doom3_offset_lock);return 0;
++}
++static int doom3_pack_texture_mip(VkImage image, unsigned mip, unsigned w, unsigned h,
++                              const void *rgba, void *packed, size_t capacity, int cached) {
 +    VkPs4Image *img=(VkPs4Image*)image;
 +    const uint64_t bytes=doom3_texture_layout(img);
 +    if (!bytes || !rgba || !packed || capacity<bytes || mip>=img->create_info.mipLevels ||
@@ -1666,6 +1737,7 @@ index 168c1f3..1aa001b 100644
 +    if (sceGpaComputeSurfaceSizeOffset(&size,&base,&info,mip,0)!=GPA_ERR_OK ||
 +        sceGpaTpInit(&tp,&info,mip,0)!=GPA_ERR_OK ||
 +        sceGpaInitSurfaceContext(&context,size,&tp)!=GPA_ERR_OK) return 0;
++    if(cached && doom3_pack_cached(&context,size,w,h,rgba,(char*)packed+base)) return 1;
 +    for (unsigned y=0; y<h; ++y) for (unsigned x=0; x<w; ++x) {
 +        uint64_t offset=0,bit=0;
 +        if (sceGpaComputeSurfaceCoord(&offset,&bit,&context,x,y,0,0)!=GPA_ERR_OK ||
@@ -1673,6 +1745,14 @@ index 168c1f3..1aa001b 100644
 +        memcpy((char*)packed+base+offset,(const char*)rgba+((size_t)y*w+x)*4,4);
 +    }
 +    return 1;
++}
++int doom3_ps4_pack_texture_mip(VkImage image,unsigned mip,unsigned w,unsigned h,
++    const void *rgba,void *packed,size_t capacity) {
++    return doom3_pack_texture_mip(image,mip,w,h,rgba,packed,capacity,0);
++}
++int doom3_ps4_pack_texture_mip_cached(VkImage image,unsigned mip,unsigned w,unsigned h,
++    const void *rgba,void *packed,size_t capacity) {
++    return doom3_pack_texture_mip(image,mip,w,h,rgba,packed,capacity,1);
 +}
 +void doom3_ps4_copy_texture(VkCommandBuffer cb, VkBuffer buffer,
 +                            VkDeviceSize offset, VkImage image) {
@@ -1919,7 +1999,7 @@ index 168c1f3..1aa001b 100644
  /* === Render pass commands === */
  
  /* Check if attachment `att_idx` is used by subpass `subpass` (via any
-@@ -2318,7 +2951,9 @@ vk_ps4_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBegin
+@@ -2318,7 +3031,9 @@ vk_ps4_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBegin
                  sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
  
                  /* Trigger the lazy clear with a fullscreen draw. */
@@ -1930,7 +2010,7 @@ index 168c1f3..1aa001b 100644
  
              } else if (view->image->is_render_target) {
                  const VkClearColorValue *cc =
-@@ -2341,13 +2976,7 @@ vk_ps4_CmdEndRenderPass(VkCommandBuffer commandBuffer) {
+@@ -2341,13 +3056,7 @@ vk_ps4_CmdEndRenderPass(VkCommandBuffer commandBuffer) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1945,7 +2025,7 @@ index 168c1f3..1aa001b 100644
      GnmDbRenderControl db_ctrl;
      memset(&db_ctrl, 0, sizeof(db_ctrl));
      db_ctrl.depthclearenable = 0;
-@@ -2460,7 +3089,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
+@@ -2460,7 +3169,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
                          db_ctrl.depthclearenable = has_depth ? 1 : 0;
                          db_ctrl.stencilclearenable = has_stencil ? 1 : 0;
                          sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
@@ -1956,7 +2036,7 @@ index 168c1f3..1aa001b 100644
                      }
                  }
              }
-@@ -2492,7 +3123,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
+@@ -2492,7 +3203,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
                          db_ctrl.depthclearenable = has_depth ? 1 : 0;
                          db_ctrl.stencilclearenable = has_stencil ? 1 : 0;
                          sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
@@ -1967,7 +2047,7 @@ index 168c1f3..1aa001b 100644
                      }
                  }
              }
-@@ -2516,19 +3149,42 @@ vk_ps4_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sr
+@@ -2516,19 +3229,42 @@ vk_ps4_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sr
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1990,15 +2070,15 @@ index 168c1f3..1aa001b 100644
 +        if (b->srcQueueFamilyIndex != b->dstQueueFamilyIndex) {
 +            vk_ps4_log("unsupported command: %s:%u", __func__, __LINE__);
 +    cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return;
-         }
-     }
++        }
++    }
 +    for (uint32_t i = 0; i < bufferMemoryBarrierCount; ++i) {
 +        const VkBufferMemoryBarrier *b = &pBufferMemoryBarriers[i];
 +        if (b->srcQueueFamilyIndex != b->dstQueueFamilyIndex) {
 +            vk_ps4_log("unsupported command: %s:%u", __func__, __LINE__);
 +    cmd->resource_error = VK_ERROR_FEATURE_NOT_PRESENT; return;
-+        }
-+    }
+         }
+     }
 +    if (!cmd->barrier_label.allocated &&
 +        sceGnmDirectMemoryAllocate(&cmd->barrier_label, 4, 65536,
 +            GNM_DIRECT_MEMORY_TYPE_WC_GARLIC, GNM_PROT_CPU_GPU_RW) != GNM_ERROR_OK) {
@@ -2020,7 +2100,7 @@ index 168c1f3..1aa001b 100644
  
      (void)srcStageMask;
      (void)dstStageMask;
-@@ -2609,117 +3265,57 @@ VKAPI_ATTR void VKAPI_CALL
+@@ -2609,117 +3345,57 @@ VKAPI_ATTR void VKAPI_CALL
  vk_ps4_CmdClearColorImage(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout,
                            const VkClearColorValue *pColor, uint32_t rangeCount,
                            const VkImageSubresourceRange *pRanges) {
@@ -2187,7 +2267,7 @@ index 168c1f3..1aa001b 100644
  }
  
  VKAPI_ATTR void VKAPI_CALL
-@@ -2756,7 +3352,9 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
+@@ -2756,7 +3432,9 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
          0, 0,
          img->create_info.extent.width,
          img->create_info.extent.height);
@@ -2198,7 +2278,7 @@ index 168c1f3..1aa001b 100644
  
      /* Iterate ranges to validate bounds (API contract). The lazy clear
       * covers the entire target regardless of ranges. */
-@@ -2773,237 +3371,122 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
+@@ -2773,237 +3451,122 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
      (void)imageLayout;
  }
  

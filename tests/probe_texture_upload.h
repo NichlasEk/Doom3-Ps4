@@ -4,7 +4,7 @@
  * sampling and catches wrong mip offsets, missing copies and lifetime errors. */
 #include "texture_upload.h"
 static int probe_texture_upload(VkDevice dev, VkQueue queue, VkCommandBuffer cmd) {
-    const unsigned shapes[][2]={{1,1},{3,5},{8,8},{17,9},{513,509},{1024,1},{1,1024},{256,128},{1024,1024}};
+    const unsigned shapes[][2]={{1,1},{3,5},{8,8},{17,9},{513,509},{1024,1},{1,1024},{256,128},{1024,1024},{1024,512},{512,1024}};
     if(doom3_ps4_texture_bytes(VK_NULL_HANDLE)) return 1;
     for(unsigned reject=0;reject<2;++reject) {
         VkImageCreateInfo ci={0};ci.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;ci.imageType=VK_IMAGE_TYPE_2D;
@@ -61,14 +61,14 @@ static int probe_texture_upload(VkDevice dev, VkQueue queue, VkCommandBuffer cmd
                 size_t n=(size_t)mw*mh*4;
                 if (linear+n>bytes) return 1;
                 for(size_t j=0;j<n;++j) bp[0][16+linear+j]=(unsigned char)(j*37+(j/4/mw)*71+mip*53+pass*113+1);
-                if(!doom3_ps4_pack_texture_mip(images[1],mip,mw,mh,bp[0]+16+linear,bp[1]+16,bytes)) return 1;
+                if(!doom3_ps4_pack_texture_mip_cached(images[1],mip,mw,mh,bp[0]+16+linear,bp[1]+16,bytes)) return 1;
                 regions[mip].bufferOffset=16+linear;
                 regions[mip].imageSubresource=(VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT,mip,0,1};
                 regions[mip].imageExtent=(VkExtent3D){mw,mh,1};linear+=n;
             }
-            if(doom3_ps4_pack_texture_mip(images[1],count,w,h,bp[0],bp[1]+16,bytes) ||
-               doom3_ps4_pack_texture_mip(images[1],0,w,h,bp[0],bp[1]+16,bytes-1) ||
-               doom3_ps4_pack_texture_mip(images[1],0,w+1,h,bp[0],bp[1]+16,bytes)) return 1;
+            if(doom3_ps4_pack_texture_mip_cached(images[1],count,w,h,bp[0],bp[1]+16,bytes) ||
+               doom3_ps4_pack_texture_mip_cached(images[1],0,w,h,bp[0],bp[1]+16,bytes-1) ||
+               doom3_ps4_pack_texture_mip_cached(images[1],0,w+1,h,bp[0],bp[1]+16,bytes)) return 1;
             VkMappedMemoryRange ranges[2]={{0},{0}};
             for(unsigned i=0;i<2;++i) {ranges[i].sType=VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;ranges[i].memory=memory[i];ranges[i].size=VK_WHOLE_SIZE;}
             CHECK(vkFlushMappedMemoryRanges(dev,2,ranges));
@@ -111,6 +111,8 @@ static int probe_texture_upload(VkDevice dev, VkQueue queue, VkCommandBuffer cmd
             vkUnmapMemory(dev,memory[i]);vkDestroyImage(dev,images[i],NULL);vkFreeMemory(dev,memory[i],NULL);}
         vk_ps4_log("PASS static texture heap=%u %ux%u mips=%u updates=2",heap,w,h,count);
     }
-    vk_ps4_log("PASS static texture upload cases=18 updates=36 compared_bytes=%llu",checked);
+    doom3_ps4_clear_texture_cache();
+    doom3_ps4_clear_texture_cache();
+    vk_ps4_log("PASS static texture upload cases=22 updates=44 compared_bytes=%llu",checked);
     return 0;
 }
