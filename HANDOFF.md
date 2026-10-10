@@ -1,3 +1,22 @@
+## 2026-10-10: user confirms 0.17 improvement; startup investigation
+
+User physically tested 0.17 and reports it became really good. Existing fix
+5c750bc is pushed. Fresh read-only FTP snapshot is retained under
+artifacts/texture-copy-017/startup-observation/ (engine PID260, final0.17 marker).
+Do not reuse PID257 RPC state: the user has restarted Doom since our test.
+This run reports first-map total87.681s, image65.800s, upload40.675s,
+CPU-pack37.921s, file reads15.862s;2062packed/5generic. These support the earlier
+upload result but are not a controlled new A/B comparison.
+
+User requests faster loading of the game itself; clarification pending whether
+application startup or map/save loading. Inspection confirms packed uploads are
+currently gated by D3LoadActive(), so application startup still uses the generic
+path. Candidate: measure InitGame phases and startup uploads, then explicitly
+extend packed uploads to startup while retaining synchronous fences and fallback.
+Do not infer menu-ready time from first QueuePresent (startup loading messages
+also present frames). Current logs lack a separate menu-ready phase marker.
+No new runtime change or package installed during this read-only investigation.
+
 ## 2026-10-10: static tiled texture uploads improve loading (0.17)
 
 [Full results and limits](docs/TEXTURE-COPY-017.md). Same-package A/B/A/B Mars City
