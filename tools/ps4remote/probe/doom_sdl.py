@@ -6,7 +6,7 @@ No automatic retries: a timed-out event may already have been queued.
 import argparse,fcntl,json,struct,subprocess,time
 from pathlib import Path
 from debug_client import DebugClient,utc
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pid',type=int,required=True);actions=p.add_mutually_exclusive_group(required=True);actions.add_argument('--command');actions.add_argument('--keys',help='Comma separated keys, for example w,shift');actions.add_argument('--move',nargs=2,type=int,metavar=('DX','DY'));actions.add_argument('--point',nargs=2,type=int,metavar=('X','Y'));actions.add_argument('--click',choices=['left','middle','right']);p.add_argument('--hold',type=float,default=.2);p.add_argument('--console-timeout',type=float,default=3,help='Seconds to await console state; extend for blocking map loads');p.add_argument('--release',action='store_true',help='Release named keys without pressing them (recovery)');p.add_argument('--reuse-session',action='store_true',help='Only for the same still-running process; never after reboot or PID reuse');a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pid',type=int,required=True);p.add_argument('--elf',type=Path,default=Path('build/client-runtime/dude.oelf'));actions=p.add_mutually_exclusive_group(required=True);actions.add_argument('--command');actions.add_argument('--keys',help='Comma separated keys, for example w,shift');actions.add_argument('--move',nargs=2,type=int,metavar=('DX','DY'));actions.add_argument('--point',nargs=2,type=int,metavar=('X','Y'));actions.add_argument('--click',choices=['left','middle','right']);p.add_argument('--hold',type=float,default=.2);p.add_argument('--console-timeout',type=float,default=3,help='Seconds to await console state; extend for blocking map loads');p.add_argument('--release',action='store_true',help='Release named keys without pressing them (recovery)');p.add_argument('--reuse-session',action='store_true',help='Only for the same still-running process; never after reboot or PID reuse');a=p.parse_args()
 if a.command is not None and (len(a.command)>200 or any(ord(c)<32 or ord(c)>126 for c in a.command)):raise SystemExit('One bounded ASCII command required')
 if not 1<=a.console_timeout<=300:raise SystemExit('Console timeout must be 1..300 seconds')
 if a.release and not a.keys:raise SystemExit('--release requires --keys')
@@ -19,19 +19,19 @@ if any(abs(v)>4096 for v in (a.move or a.point or [])):raise SystemExit('Mouse c
 root=Path('artifacts/ps4-probe');root.mkdir(parents=True,exist_ok=True);(root/'jobs').mkdir(exist_ok=True);
 lock=(root/f'doom{a.pid}-sdl.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 statepath=root/f'doom{a.pid}-sdl-state.json';jobpath=root/'jobs'/('sdl-'+str(time.time_ns())+'.json')
-record=dict(started=utc(),pid=a.pid,arguments=vars(a),events=[])
+record=dict(started=utc(),pid=a.pid,arguments={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()},events=[])
 def save():jobpath.write_text(json.dumps(record,indent=2)+'\n')
 save();c=None
 try:
  c=DebugClient('192.168.32.229')
  info=c.identity(a.pid,'DOOM00001');maps=c.maps(a.pid);base=next(m['start'] for m in maps if m['name']=='executable' and m['prot']==5)
  symbols={}
- for line in subprocess.check_output(['readelf','-sW','build/client-runtime/dude.oelf'],text=True).splitlines():
+ for line in subprocess.check_output(['readelf','-sW',str(a.elf)],text=True).splitlines():
   f=line.split()
   if len(f)>=8 and f[0].endswith(':'):
    try:symbols[f[-1]]=int(f[1],16)
    except ValueError:pass
- off=symbols['SDL_PushEvent'];data=Path('build/client-runtime/dude.oelf').read_bytes()
+ off=symbols['SDL_PushEvent'];data=a.elf.read_bytes()
  if c.read(a.pid,base+off,64)!=data[0x4000+off:0x4000+off+64]:raise ValueError('SDL function fingerprint mismatch')
  if statepath.exists():
   if not a.reuse_session:raise ValueError('Existing RPC state: confirm same running session with --reuse-session')

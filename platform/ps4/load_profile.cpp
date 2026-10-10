@@ -11,6 +11,7 @@ static uint64_t nowNs() {
     if(clock_gettime((clockid_t)4,&t)!=0) return 0;
     return uint64_t(t.tv_sec)*1000000000ULL+uint64_t(t.tv_nsec);
 }
+bool D3LoadActive() { return active.load(std::memory_order_acquire); }
 void D3LoadBegin() {
     for(int i=0;i<D3LP_COUNT;++i) { elapsed[i]=0;calls[i]=0; }
     windowStart=nowNs();active.store(true,std::memory_order_release);

@@ -4,6 +4,7 @@
 // Thread sums may exceed wall time. No GPU timestamp claims.
 enum D3LoadStage { D3LP_FILE, D3LP_DECODE, D3LP_HASH, D3LP_MIPS,
                    D3LP_UPLOAD, D3LP_WAIT, D3LP_COUNT };
+bool D3LoadActive();
 void D3LoadBegin();
 void D3LoadEnd();
 uint64_t D3LoadStart();

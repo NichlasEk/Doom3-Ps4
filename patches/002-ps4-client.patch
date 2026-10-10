@@ -370,7 +370,7 @@ index 91120ed..5a52da6 100644
  #endif
  
 diff --git a/neo/renderer/Image_init.cpp b/neo/renderer/Image_init.cpp
-index 59f3f90..64b0e1f 100644
+index 59f3f90..542df26 100644
 --- a/neo/renderer/Image_init.cpp
 +++ b/neo/renderer/Image_init.cpp
 @@ -26,6 +26,9 @@ If you have questions concerning this license or the applicable additional terms
@@ -393,6 +393,14 @@ index 59f3f90..64b0e1f 100644
  
  	int		purgeCount = 0;
  	int		keepCount = 0;
+@@ -2233,6 +2239,7 @@ void idImageManager::EndLevelLoad() {
+ 		}
+ 	}
+ 
++	if ( glConfig.rhiBackend ) { rhi::GetRHI()->FlushTextureUploads( true ); }
+ 	int	end = Sys_Milliseconds();
+ 	common->Printf( "%5i purged from previous\n", purgeCount );
+ 	common->Printf( "%5i kept from previous\n", keepCount );
 diff --git a/neo/renderer/Image_load.cpp b/neo/renderer/Image_load.cpp
 index c43d64d..c562809 100644
 --- a/neo/renderer/Image_load.cpp
@@ -477,8 +485,20 @@ index 1d6f481..28a7dab 100644
  			tri.indexes = silInfo.indexes;
  			R_FreeStaticTriSurfIndexes( &tri );
  		} // else silInfos[i].indexes points directly into the corresponding data in this->md3
+diff --git a/neo/renderer/rhi/RHI.h b/neo/renderer/rhi/RHI.h
+index 3cda69a..156d9b7 100644
+--- a/neo/renderer/rhi/RHI.h
++++ b/neo/renderer/rhi/RHI.h
+@@ -217,6 +217,7 @@ public:
+ 
+ 	// ---- frame ----
+ 	virtual void	BeginFrame( int windowWidth, int windowHeight ) = 0;
++	virtual void FlushTextureUploads( bool endLoad = false ) {}
+ 	virtual void	EndFrame() = 0;						// present handled by glimp/swapchain
+ 	// Whether the command list about to run ends in a present (RC_SWAP_BUFFERS). The frontend
+ 	// also issues swap-less lists (CaptureRenderToFile: objective cam shots, savegame previews);
 diff --git a/neo/renderer/rhi/vk/VulkanBackend.cpp b/neo/renderer/rhi/vk/VulkanBackend.cpp
-index 3eaad02..3b9746f 100644
+index 3eaad02..09f6d3f 100644
 --- a/neo/renderer/rhi/vk/VulkanBackend.cpp
 +++ b/neo/renderer/rhi/vk/VulkanBackend.cpp
 @@ -25,6 +25,9 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
@@ -514,17 +534,45 @@ index 3eaad02..3b9746f 100644
  #define VMA_STATIC_VULKAN_FUNCTIONS 1
  #define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
  #define VMA_IMPLEMENTATION
-@@ -142,6 +154,9 @@ static idCVar r_vkBdaZfill( "r_vkBdaZfill", "0", CVAR_RENDERER | CVAR_INTEGER,
+@@ -142,6 +154,14 @@ static idCVar r_vkBdaZfill( "r_vkBdaZfill", "0", CVAR_RENDERER | CVAR_INTEGER,
  static idCVar r_vkBdaVerbose( "r_vkBdaVerbose", "0", CVAR_RENDERER | CVAR_BOOL,
  	"Vulkan backend: print the r_vkBdaZfill firing counter once/sec (per-draw / batched / fell-back) to confirm the BDA z-fill path is live. Diagnostic only, off by default so enabling the offload doesn't chatter to the console." );
  
 +#ifdef __PS4__
 +#include "present.h"
 +#endif
++#ifdef __PS4__
++static idCVar r_ps4UploadBatch("r_ps4UploadBatch", "0", CVAR_RENDERER | CVAR_BOOL,
++    "batch load-time 2D uploads, max 8 images / 1 MiB source data");
++#endif
++
  namespace rhi {
  
  // Forward declarations for the crash-dump helpers implemented later in this TU.
-@@ -1387,7 +1402,11 @@ VulkanBackend::CreateInstance
+@@ -180,6 +200,7 @@ public:
+ 	// ---- frame ----
+ 	virtual void	BeginFrame( int windowWidth, int windowHeight );
+ 	virtual void	EndFrame();
++	virtual void FlushTextureUploads( bool endLoad = false );
+ 	virtual void	SetFramePresent( bool present );
+ 
+ 	// ---- passes ----
+@@ -1120,6 +1141,14 @@ private:
+ 	// synchronous upload plumbing (image staging at load time)
+ 	VkCommandPool				uploadPool = VK_NULL_HANDLE;
+ 	VkCommandBuffer				uploadCb = VK_NULL_HANDLE;
++#ifdef __PS4__
++    struct PendingTextureUpload { VkBuffer buffer; VmaAllocation allocation; };
++    VkCommandBuffer textureBatchCb = VK_NULL_HANDLE;
++    std::vector<PendingTextureUpload> textureBatchBuffers;
++    VkDeviceSize textureBatchBytes = 0;
++    unsigned textureBatchSubmits = 0, textureBatchImages = 0;
++#endif
++
+ 	VkFence						uploadFence = VK_NULL_HANDLE;
+ 
+ public:
+@@ -1387,7 +1416,11 @@ VulkanBackend::CreateInstance
  */
  bool VulkanBackend::CreateInstance() {
  	SDL_Window *win = (SDL_Window *)GLimp_GetSDLWindow();
@@ -537,7 +585,7 @@ index 3eaad02..3b9746f 100644
  		common->Warning( "VK: no SDL window - GLimp_Init must run first" );
  		return false;
  	}
-@@ -1397,7 +1416,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1397,7 +1430,7 @@ bool VulkanBackend::CreateInstance() {
  	// backend targets a single 1.4 baseline rather than juggling older versions.
  	uint32_t instVersion = VK_API_VERSION_1_0;
  	vkEnumerateInstanceVersion( &instVersion );
@@ -546,7 +594,7 @@ index 3eaad02..3b9746f 100644
  		common->Warning( "VK: loader only supports Vulkan %u.%u (baseline is 1.4) - update your Vulkan runtime/drivers",
  			VK_API_VERSION_MAJOR( instVersion ), VK_API_VERSION_MINOR( instVersion ) );
  		return false;
-@@ -1405,7 +1424,9 @@ bool VulkanBackend::CreateInstance() {
+@@ -1405,7 +1438,9 @@ bool VulkanBackend::CreateInstance() {
  
  	// surface extensions from SDL
  	std::vector<const char *> exts;
@@ -557,7 +605,7 @@ index 3eaad02..3b9746f 100644
  	{
  		Uint32 extCount = 0;
  		const char * const * sdlExts = SDL_Vulkan_GetInstanceExtensions( &extCount );
-@@ -1455,7 +1476,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1455,7 +1490,7 @@ bool VulkanBackend::CreateInstance() {
  	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
  	app.pApplicationName = "DUDE";
  	app.pEngineName = "DUDE";
@@ -566,7 +614,7 @@ index 3eaad02..3b9746f 100644
  
  	VkInstanceCreateInfo ici = {};
  	ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-@@ -1492,6 +1513,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1492,6 +1527,7 @@ bool VulkanBackend::CreateInstance() {
  		VK_API_VERSION_PATCH( instVersion ),
  		haveValidation ? "ON" : "off" );
  
@@ -574,7 +622,7 @@ index 3eaad02..3b9746f 100644
  	// surface
  #if SDL_VERSION_ATLEAST(3, 0, 0)
  	if ( !SDL_Vulkan_CreateSurface( win, instance, NULL, &surface ) ) {
-@@ -1502,6 +1524,10 @@ bool VulkanBackend::CreateInstance() {
+@@ -1502,6 +1538,10 @@ bool VulkanBackend::CreateInstance() {
  		return false;
  	}
  
@@ -585,7 +633,7 @@ index 3eaad02..3b9746f 100644
  	return true;
  }
  
-@@ -1539,7 +1565,7 @@ bool VulkanBackend::PickPhysicalDevice() {
+@@ -1539,7 +1579,7 @@ bool VulkanBackend::PickPhysicalDevice() {
  			VK_API_VERSION_MAJOR( props.apiVersion ), VK_API_VERSION_MINOR( props.apiVersion ),
  			VK_API_VERSION_PATCH( props.apiVersion ) );
  
@@ -594,7 +642,7 @@ index 3eaad02..3b9746f 100644
  			common->Printf( "VK:   skipped (needs Vulkan 1.4)\n" );
  			continue;
  		}
-@@ -1901,7 +1927,7 @@ bool VulkanBackend::CreateDeviceAndVma() {
+@@ -1901,7 +1941,7 @@ bool VulkanBackend::CreateDeviceAndVma() {
  	aci.physicalDevice = physical;
  	aci.device = device;
  	aci.instance = instance;
@@ -603,7 +651,7 @@ index 3eaad02..3b9746f 100644
  	// must match the enabled feature + the buffer usage bit (Phase 3.2b BDA); VMA needs this to
  	// pass VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT / the alloc flag through to buffer creation.
  	if ( haveBufferDeviceAddress ) {
-@@ -1919,6 +1945,9 @@ VulkanBackend::QueryDrawableSize
+@@ -1919,6 +1959,9 @@ VulkanBackend::QueryDrawableSize
  ====================
  */
  void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
@@ -613,7 +661,7 @@ index 3eaad02..3b9746f 100644
  	SDL_Window *win = (SDL_Window *)GLimp_GetSDLWindow();
  	w = h = 0;
  	if ( win == NULL ) {
-@@ -1927,7 +1956,11 @@ void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
+@@ -1927,7 +1970,11 @@ void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
  #if SDL_VERSION_ATLEAST(3, 0, 0)
  	SDL_GetWindowSizeInPixels( win, &w, &h );
  #else
@@ -626,7 +674,7 @@ index 3eaad02..3b9746f 100644
  #endif
  }
  
-@@ -2127,7 +2160,11 @@ bool VulkanBackend::CreateSceneTargets() {
+@@ -2127,7 +2174,11 @@ bool VulkanBackend::CreateSceneTargets() {
  	}
  
  	// depth-stencil format: D24S8 where supported (NVIDIA), else D32S8 (AMD)
@@ -638,7 +686,7 @@ index 3eaad02..3b9746f 100644
  	VkFormatProperties fp;
  	vkGetPhysicalDeviceFormatProperties( physical, sceneDepthFormat, &fp );
  	if ( ( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT ) == 0 ) {
-@@ -2272,6 +2309,9 @@ VulkanBackend::DestroySceneTargets
+@@ -2272,6 +2323,9 @@ VulkanBackend::DestroySceneTargets
  ====================
  */
  void VulkanBackend::DestroySceneTargets() {
@@ -648,7 +696,31 @@ index 3eaad02..3b9746f 100644
  	if ( sceneFb )         { vkDestroyFramebuffer( device, sceneFb, NULL ); sceneFb = VK_NULL_HANDLE; }
  	if ( passClear )       { vkDestroyRenderPass( device, passClear, NULL ); passClear = VK_NULL_HANDLE; }
  	if ( passLoad )        { vkDestroyRenderPass( device, passLoad, NULL ); passLoad = VK_NULL_HANDLE; }
-@@ -3091,7 +3131,10 @@ void VulkanBackend::EndFrame() {
+@@ -2465,6 +2519,7 @@ init (failed bring-up) and when never initialized.
+ ====================
+ */
+ void VulkanBackend::Shutdown() {
++	FlushTextureUploads(true);
+ 	if ( instance == VK_NULL_HANDLE ) {
+ 		return;
+ 	}
+@@ -2635,6 +2690,7 @@ VulkanBackend::BeginFrame
+ ====================
+ */
+ void VulkanBackend::BeginFrame( int windowWidth, int windowHeight ) {
++	FlushTextureUploads(false);
+ 	if ( vkDeviceDead ) {
+ 		common->Warning( "VK: device is dead; skipping BeginFrame (use vid_restart)" );
+ 		return;
+@@ -3059,6 +3115,7 @@ Blit the scene image onto the acquired swapchain image, submit, present.
+ ====================
+ */
+ void VulkanBackend::EndFrame() {
++	FlushTextureUploads();
+ 	if ( !frameOpen ) {
+ 		return;
+ 	}
+@@ -3091,7 +3148,10 @@ void VulkanBackend::EndFrame() {
  			gpuTimerBusy[frameIndex] = true;
  			gpuTimerActive = false;
  		}
@@ -660,7 +732,7 @@ index 3eaad02..3b9746f 100644
  		VkSubmitInfo si = {};
  		si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
  		si.commandBufferCount = 1;
-@@ -3142,10 +3185,15 @@ void VulkanBackend::EndFrame() {
+@@ -3142,10 +3202,15 @@ void VulkanBackend::EndFrame() {
  	blit.dstOffsets[1].x = (int32_t)swapExtent.width;
  	blit.dstOffsets[1].y = (int32_t)swapExtent.height;
  	blit.dstOffsets[1].z = 1;
@@ -676,7 +748,7 @@ index 3eaad02..3b9746f 100644
  
  	// M6: ImGui draws into the swapchain image after the blit, through a
  	// LOAD render pass whose finalLayout is PRESENT (screenshots read the
-@@ -3212,7 +3260,10 @@ void VulkanBackend::EndFrame() {
+@@ -3212,7 +3277,10 @@ void VulkanBackend::EndFrame() {
  		gpuTimerActive = false;
  	}
  
@@ -688,7 +760,7 @@ index 3eaad02..3b9746f 100644
  
  	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
  	VkSubmitInfo si = {};
-@@ -3461,6 +3512,7 @@ bool VulkanBackend::CreateM2Resources() {
+@@ -3461,6 +3529,7 @@ bool VulkanBackend::CreateM2Resources() {
  		}
  	}
  
@@ -696,7 +768,7 @@ index 3eaad02..3b9746f 100644
  	// compute lane (docs/gpu-offload-plan.md Phase 1): one set of 8 STORAGE_BUFFER bindings
  	// (ComputeArgs::storage[]) + a 128-byte push-constant range for params, a dedicated
  	// pipeline layout, and a FREE-able pool for per-dispatch sets. All COMPUTE-stage, kept
-@@ -3505,6 +3557,7 @@ bool VulkanBackend::CreateM2Resources() {
+@@ -3505,6 +3574,7 @@ bool VulkanBackend::CreateM2Resources() {
  		}
  	}
  
@@ -704,7 +776,46 @@ index 3eaad02..3b9746f 100644
  	// per-slot set 0, pointing at that slot's UBO ring (persistent pool)
  	{
  		VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, FRAMES_IN_FLIGHT };
-@@ -8275,7 +8328,13 @@ ImageHandle VulkanBackend::CreateTexture2D( int w, int h, const void *pixels,
+@@ -8259,6 +8329,38 @@ path uses), through a staging buffer and a blocking submit — image loads
+ happen at init/level load, not mid-frame.
+ ====================
+ */
++
++void VulkanBackend::FlushTextureUploads( bool endLoad ) {
++#ifdef __PS4__
++    if (!textureBatchBuffers.empty()) {
++        {
++        D3LoadTimer waitProfile(D3LP_WAIT);
++        VkSubmitInfo si = {}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
++        si.commandBufferCount = 1; si.pCommandBuffers = &textureBatchCb;
++        if (vkEndCommandBuffer(textureBatchCb) != VK_SUCCESS ||
++            vkResetFences(device, 1, &uploadFence) != VK_SUCCESS ||
++            vkQueueSubmit(gfxQueue, 1, &si, uploadFence) != VK_SUCCESS ||
++            vkWaitForFences(device, 1, &uploadFence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
++            common->FatalError("PS4 texture batch failed; staging retained");
++            return;
++        }
++        }
++        // Only a successfully completed fence permits freeing staging/re-recording.
++        for (size_t i=0; i<textureBatchBuffers.size(); ++i)
++            vmaDestroyBuffer(vma, textureBatchBuffers[i].buffer, textureBatchBuffers[i].allocation);
++        textureBatchBuffers.clear(); textureBatchBytes = 0; ++textureBatchSubmits;
++    }
++    if (endLoad && textureBatchCb != VK_NULL_HANDLE) {
++        vkFreeCommandBuffers(device, uploadPool, 1, &textureBatchCb);
++        textureBatchCb = VK_NULL_HANDLE;
++        Sys_Printf("PS4 UPLOADBATCH images=%u submits=%u cap_bytes=1048576 cap_images=8\n",textureBatchImages,textureBatchSubmits);
++        textureBatchImages=textureBatchSubmits=0;
++    }
++#else
++    (void)endLoad;
++#endif
++}
++
+ ImageHandle VulkanBackend::CreateTexture2D( int w, int h, const void *pixels,
+                                             int textureFilter, int textureRepeat, bool allowMips ) {
+ 	if ( device == VK_NULL_HANDLE || w <= 0 || h <= 0 || pixels == NULL || uploadCb == VK_NULL_HANDLE ) {
+@@ -8275,7 +8377,13 @@ ImageHandle VulkanBackend::CreateTexture2D( int w, int h, const void *pixels,
  		const byte *src = (const byte *)pixels;
  		int lw = w, lh = h;
  		while ( lw > 1 || lh > 1 ) {
@@ -719,7 +830,7 @@ index 3eaad02..3b9746f 100644
  			lw = lw > 1 ? lw >> 1 : 1;
  			lh = lh > 1 ? lh >> 1 : 1;
  			owned.push_back( shrunk );
-@@ -8318,6 +8377,10 @@ not own the level buffers (the caller frees them once this returns).
+@@ -8318,6 +8426,10 @@ not own the level buffers (the caller frees them once this returns).
  ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMip *inLevels,
                                                    int numLevels, int textureFilter,
                                                    int textureRepeat ) {
@@ -730,9 +841,90 @@ index 3eaad02..3b9746f 100644
  	if ( device == VK_NULL_HANDLE || w <= 0 || h <= 0 || numLevels < 1 || inLevels == NULL
  			|| inLevels[0].data == NULL || uploadCb == VK_NULL_HANDLE ) {
  		return 0;
-@@ -8436,8 +8499,13 @@ ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMi
+@@ -8387,13 +8499,40 @@ ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMi
+ 		}
+ 	}
+ 
++
++    bool batch = false;
++    VkCommandBuffer copyCb = uploadCb;
++#ifdef __PS4__
++    batch = D3LoadActive() && r_ps4UploadBatch.GetBool() && total <= 1024 * 1024;
++    if ( !batch || textureBatchBuffers.size() >= 8 || textureBatchBytes + total > 1024 * 1024 ) {
++        FlushTextureUploads();
++    }
++    if ( batch ) {
++        if ( textureBatchCb == VK_NULL_HANDLE ) {
++            VkCommandBufferAllocateInfo ai = {};
++            ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
++            ai.commandPool = uploadPool; ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
++            if ( vkAllocateCommandBuffers(device, &ai, &textureBatchCb) != VK_SUCCESS ) {
++                // Nothing queued: preserve the original synchronous fallback.
++                textureBatchCb = VK_NULL_HANDLE; batch = false;
++            }
++        }
++        if ( batch ) copyCb = textureBatchCb;
++    }
++#endif
+ 	// record + submit the upload, wait for it (load-time only)
+ 	{
+-		vkResetCommandBuffer( uploadCb, 0 );
++        if ( !batch
++#ifdef __PS4__
++            || textureBatchBuffers.empty()
++#endif
++        ) {
++        if (vkResetCommandBuffer(copyCb, 0) != VK_SUCCESS) common->FatalError("texture upload reset failed");
+ 		VkCommandBufferBeginInfo bi = {};
+ 		bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+ 		bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+-		vkBeginCommandBuffer( uploadCb, &bi );
++		if (vkBeginCommandBuffer( copyCb, &bi ) != VK_SUCCESS) common->FatalError("texture upload begin failed");
++        }
+ 
+ 		VkImageMemoryBarrier toDst = {};
+ 		toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+@@ -8407,7 +8546,7 @@ ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMi
+ 		toDst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+ 		toDst.subresourceRange.levelCount = (uint32_t)levels.size();
+ 		toDst.subresourceRange.layerCount = 1;
+-		vkCmdPipelineBarrier( uploadCb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
++		vkCmdPipelineBarrier( copyCb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+ 			0, 0, NULL, 0, NULL, 1, &toDst );
+ 
+ 		VkDeviceSize bufOfs = 0;
+@@ -8418,7 +8557,7 @@ ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMi
+ 			c.imageSubresource.mipLevel = (uint32_t)i;
+ 			c.imageSubresource.layerCount = 1;
+ 			c.imageExtent = { (uint32_t)levels[i].w, (uint32_t)levels[i].h, 1 };
+-			vkCmdCopyBufferToImage( uploadCb, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c );
++			vkCmdCopyBufferToImage( copyCb, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c );
+ 			bufOfs += (VkDeviceSize)levels[i].w * levels[i].h * 4;
+ 		}
+ 
+@@ -8427,19 +8566,34 @@ ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMi
+ 		toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+ 		toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+ 		toRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+-		vkCmdPipelineBarrier( uploadCb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
++		vkCmdPipelineBarrier( copyCb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+ 			0, 0, NULL, 0, NULL, 1, &toRead );
+ 
+-		vkEndCommandBuffer( uploadCb );
++#ifdef __PS4__
++        if (batch) {
++            textureBatchBuffers.push_back({staging, stagingAlloc});
++            textureBatchBytes += total;
++            ++textureBatchImages;
++        } else
++#endif
++        {
++		vkEndCommandBuffer( copyCb );
+ 		VkSubmitInfo si = {};
+ 		si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
  		si.commandBufferCount = 1;
- 		si.pCommandBuffers = &uploadCb;
+-		si.pCommandBuffers = &uploadCb;
++		si.pCommandBuffers = &copyCb;
  		vkResetFences( device, 1, &uploadFence );
 -		vkQueueSubmit( gfxQueue, 1, &si, uploadFence );
 +		{
@@ -742,10 +934,31 @@ index 3eaad02..3b9746f 100644
 +vkQueueSubmit( gfxQueue, 1, &si, uploadFence );
  		vkWaitForFences( device, 1, &uploadFence, VK_TRUE, UINT64_MAX );
 +}
++        }
++
  	}
- 	vmaDestroyBuffer( vma, staging, stagingAlloc );
+-	vmaDestroyBuffer( vma, staging, stagingAlloc );
++	if (!batch) vmaDestroyBuffer( vma, staging, stagingAlloc );
  
-@@ -8625,6 +8693,7 @@ Contents are undefined until the first CopyFramebufferToImage.
+ 	ImageRec rec;
+ 	rec.image = image;
+@@ -8454,6 +8608,7 @@ ImageHandle VulkanBackend::UploadTexture2DLevels( int w, int h, const PrebuiltMi
+ 		vi.subresourceRange.levelCount = (uint32_t)levels.size();
+ 		vi.subresourceRange.layerCount = 1;
+ 		if ( !vkCheck( vkCreateImageView( device, &vi, NULL, &rec.view ), "vkCreateImageView(texture)" ) ) {
++			FlushTextureUploads();
+ 			vmaDestroyImage( vma, image, alloc );
+ 			return 0;
+ 		}
+@@ -8525,6 +8680,7 @@ void VulkanBackend::DestroyImage( ImageHandle h ) {
+ 	if ( device == VK_NULL_HANDLE || h < 1 || h > (ImageHandle)imageTable.size() || !imageTable[h - 1].live ) {
+ 		return;
+ 	}
++	FlushTextureUploads();
+ 	// idImage::GenerateImage destroys then recreates dynamically-updated 2D images
+ 	// (scratch GUIs, video, menu logos) and can do so either between frames (front
+ 	// end reload) or mid-frame (a recording command buffer has already bound a
+@@ -8625,6 +8781,7 @@ Contents are undefined until the first CopyFramebufferToImage.
  ====================
  */
  ImageHandle VulkanBackend::CreateCaptureImage( int w, int h, bool depth, bool hdrFloat ) {
@@ -753,7 +966,7 @@ index 3eaad02..3b9746f 100644
  	if ( device == VK_NULL_HANDLE || w <= 0 || h <= 0 ) {
  		return 0;
  	}
-@@ -8877,7 +8946,18 @@ void VulkanBackend::UpdateTexture2D( ImageHandle dst, int w, int h, const void *
+@@ -8877,7 +9034,18 @@ void VulkanBackend::UpdateTexture2D( ImageHandle dst, int w, int h, const void *
  		return;		// size changes recreate the image (caller's contract)
  	}
  
@@ -773,7 +986,7 @@ index 3eaad02..3b9746f 100644
  	BufferHandle stagingHandle = 0;
  	int stagingOfs = AllocFromRing( stagingRing[frameIndex], pixels, bytes, 16, 0, &stagingHandle );
  	VkBuffer staging = LookupBuffer( stagingHandle );
-@@ -8912,7 +8992,11 @@ void VulkanBackend::UpdateTexture2D( ImageHandle dst, int w, int h, const void *
+@@ -8912,7 +9080,11 @@ void VulkanBackend::UpdateTexture2D( ImageHandle dst, int w, int h, const void *
  	c.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
  	c.imageSubresource.layerCount = 1;
  	c.imageExtent = { (uint32_t)w, (uint32_t)h, 1 };
@@ -786,7 +999,7 @@ index 3eaad02..3b9746f 100644
  
  	VkImageMemoryBarrier toRead = toDst;
  	toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-@@ -9035,6 +9119,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
+@@ -9035,6 +9207,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
  */
  ImageHandle VulkanBackend::CreateTextureCube( int size, const void * const pics[6],
                                                int textureFilter, bool allowMips ) {
@@ -796,7 +1009,7 @@ index 3eaad02..3b9746f 100644
  	if ( device == VK_NULL_HANDLE || size <= 0 || pics == NULL || uploadCb == VK_NULL_HANDLE ) {
  		return 0;
  	}
-@@ -11242,8 +11329,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
+@@ -11242,8 +11417,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
  			return;
  		}
  		// GPU-written count form (Phase 3 cull output): draw min(*count, drawCount) commands
@@ -809,7 +1022,7 @@ index 3eaad02..3b9746f 100644
  	} else {
  		vkCmdDrawIndexedIndirect( cb, ab, (VkDeviceSize)argsOffset, (uint32_t)drawCount, (uint32_t)stride );
  	}
-@@ -11927,7 +12018,7 @@ bool VulkanBackend::ImGuiInit() {
+@@ -11927,7 +12106,7 @@ bool VulkanBackend::ImGuiInit() {
  	}
  
  	ImGui_ImplVulkan_InitInfo ii = {};
@@ -971,7 +1184,7 @@ index b0ab349..ef85bc5 100644
  		common->Warning("GLimp_GrabInput called without window");
  		return;
 diff --git a/neo/sys/linux/main.cpp b/neo/sys/linux/main.cpp
-index 3d995cd..968fa75 100644
+index 3d995cd..a01c999 100644
 --- a/neo/sys/linux/main.cpp
 +++ b/neo/sys/linux/main.cpp
 @@ -88,6 +88,9 @@ const char* Posix_GetSavePath()
@@ -1030,11 +1243,11 @@ index 3d995cd..968fa75 100644
  int main(int argc, char **argv) {
 +#ifdef __PS4__
 +    vk_ps4_log_open("/data/client-vulkan.log");
-+    vk_ps4_log("BUILD 0.15 graphics=0.12 video=cpu-tiled-staging audio=0.09 clock=orbis-monotonic load-profile=1");
++    vk_ps4_log("BUILD 0.16 graphics=0.12 video=cpu-tiled-staging audio=0.09 clock=orbis-monotonic load-profile=1 upload-batch=opt-in");
 +    FILE *bundledMarker = fopen("/app0/doom3-bundled-data.txt", "rb");
 +    const bool bundledData = bundledMarker != nullptr;
 +    if (bundledMarker) fclose(bundledMarker);
-+    vk_ps4_log("DATA AUDIT 0.15 bundled=%d marker=fopen",int(bundledData));
++    vk_ps4_log("DATA AUDIT 0.16 bundled=%d marker=fopen",int(bundledData));
 +    const char *externalData = bundledData ? "/app0" : "/data/doom3-game";
 +    auto storage = ps4::resolveGameData(externalData, false);
 +    if (!bundledData && storage.status != ps4::StorageStatus::Ready)

@@ -1,3 +1,29 @@
+## 2026-10-10: bounded upload experiment tested; kept opt-in
+
+See [0.16 experiment](docs/UPLOAD-BATCH-016.md). B/A/B physical first-map loads:
+150.580s batch /124.608s serial /122.895s batch. Last two image phases100.301s
+versus100.401s: no clear image-load benefit. Wait calls2067→598, but wait time
+32.877→32.204s. Do not claim the lower inclusive upload counter as a speedup;
+flush work moves into other scopes. No general FPS gain established.
+
+Final package0.16 has upload-batch=opt-in and default r_ps4UploadBatch0.
+SHA36b9e5d2ee0a8967c94ca2520cc026a2d2fd0ef26b4d1766d774a34dc0995cd3;
+full installed hash verified, config/save hashes preserved. Initial same-version
+batch-on package SHA1eb3f211... is retained in artifacts/upload-batch-016/
+batch-default-on/ with matching ELF. Dist/current runtime are final opt-in.
+Corrected0.15 rollback and matching ELF retained. No assets committed.
+
+Current DoomPID242, worker218 launch ticket7/scratch0x28000, credentials restored.
+Receiver217/worker218 suspended; ShellCore42 RPC remains active, last resume
+successful ticket6. Completed receiver-owned install task573 remains retained.
+Do not poll worker completion while suspended. Session state is only valid for
+this continuously running console; verify identity and RPC go before reuse.
+Final runtime defaults read back: batch0, parallel images0, shadows1,fraction100.
+Final first-map PASS:150.174s total/image116.501s after package replacement,
+matching initial batch-on run150.580s/image116.568s. Slow reads recur on both
+first-after-install runs; cache/storage effect plausible, not isolated.
+Artifacts/upload-batch-016/final/ and final-check2/.
+
 ## 2026-10-10: optimization controls and load profile completed
 
 Current installed build is corrected0.15, Doom PID230, actual profiler code
