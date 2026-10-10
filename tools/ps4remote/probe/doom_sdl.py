@@ -6,8 +6,9 @@ No automatic retries: a timed-out event may already have been queued.
 import argparse,fcntl,json,struct,subprocess,time
 from pathlib import Path
 from debug_client import DebugClient,utc
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pid',type=int,required=True);actions=p.add_mutually_exclusive_group(required=True);actions.add_argument('--command');actions.add_argument('--keys',help='Comma separated keys, for example w,shift');actions.add_argument('--move',nargs=2,type=int,metavar=('DX','DY'));actions.add_argument('--point',nargs=2,type=int,metavar=('X','Y'));actions.add_argument('--click',choices=['left','middle','right']);p.add_argument('--hold',type=float,default=.2);p.add_argument('--release',action='store_true',help='Release named keys without pressing them (recovery)');p.add_argument('--reuse-session',action='store_true',help='Only for the same still-running process; never after reboot or PID reuse');a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pid',type=int,required=True);actions=p.add_mutually_exclusive_group(required=True);actions.add_argument('--command');actions.add_argument('--keys',help='Comma separated keys, for example w,shift');actions.add_argument('--move',nargs=2,type=int,metavar=('DX','DY'));actions.add_argument('--point',nargs=2,type=int,metavar=('X','Y'));actions.add_argument('--click',choices=['left','middle','right']);p.add_argument('--hold',type=float,default=.2);p.add_argument('--console-timeout',type=float,default=3,help='Seconds to await console state; extend for blocking map loads');p.add_argument('--release',action='store_true',help='Release named keys without pressing them (recovery)');p.add_argument('--reuse-session',action='store_true',help='Only for the same still-running process; never after reboot or PID reuse');a=p.parse_args()
 if a.command is not None and (len(a.command)>200 or any(ord(c)<32 or ord(c)>126 for c in a.command)):raise SystemExit('One bounded ASCII command required')
+if not 1<=a.console_timeout<=300:raise SystemExit('Console timeout must be 1..300 seconds')
 if a.release and not a.keys:raise SystemExit('--release requires --keys')
 if not .05 <= a.hold <= 2:raise SystemExit('Hold must be 0.05..2 seconds')
 keymap={chr(97+i):(4+i,97+i) for i in range(26)}
@@ -66,7 +67,7 @@ try:
   return bool(c.read(a.pid,base+symbols['_ZL12localConsole']+16,1)[0])
  def ensure_console(wanted):
   if console_active()!=wanted:toggle()
-  deadline=time.monotonic()+3
+  deadline=time.monotonic()+a.console_timeout
   while console_active()!=wanted:
    if time.monotonic()>deadline:raise RuntimeError('Console did not reach requested state; command not retried')
    time.sleep(.1)

@@ -1,3 +1,23 @@
+## 2026-10-10: optimization controls and load profile completed
+
+Current installed build is corrected0.15, Doom PID230, actual profiler code
+fingerprint verified against local dude.oelf. Map first load122.608s; image phase
+100.768s; texture upload73.390s includes submit/wait32.907s. Image program22.107s
+includes file read/inflate18.013s. Hash0.851s, mip generation0.437s. Inclusive
+counters: do not sum all stages. Prioritize bounded upload batching/preparation;
+parallel image loading remains off, synchronization unchanged. No FPS fix yet.
+0.14 A/B/A/C/A hangar:6.651/8.575(no shadows)/6.660/7.469(50% dimensions)/6.605FPS.
+Original settings restored. Full results: [0.15 investigation](docs/OPTIMIZATION-015.md).
+
+Packaging mistake corrected: initial0.15-labelled PKG ran stale0.14 eboot;
+quarantined locally. Packager now checks marker in raw ELF, OELF and eboot.
+Final installed PKG SHA d6746bab1237bd20fede8762d4825de1c650e9d86c67d319a46a53106d9bb225.
+Final evidence artifacts/optimization-015/corrected/, backups and stable0.14
+rollback retained. Receiver217/worker218 suspended while Doom230 runs;
+worker last launch ticket3 (do not blindly read completion while suspended).
+ShellCore RPC remains usable; always check resume submission AND HTTP health.
+Doom230 SDL session exists. Old224/227 sessions are historical and unsafe to reuse.
+
 ## 2026-10-10: source pushed, fresh map and gameplay measured
 
 Initial source/tool history pushed as 92d338b. Subsequent console-state fix
