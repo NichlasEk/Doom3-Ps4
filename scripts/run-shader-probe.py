@@ -11,8 +11,8 @@ root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
 mode = sys.argv[1] if len(sys.argv) > 1 else 'demote'
-if mode not in ('videoupload', 'streaming', 'sampledpresent', 'depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
-    raise SystemExit('Use streaming, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion')
+if mode not in ('textureupload', 'videoupload', 'streaming', 'sampledpresent', 'depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
+    raise SystemExit('Use textureupload, videoupload, streaming, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion')
 profile = root / ('build/shader-probe-profile-'+mode)
 out = root / ('artifacts/shader-probe-'+mode)
 out.mkdir(parents=True, exist_ok=True)
@@ -27,7 +27,7 @@ with (out/'emulator.log').open('w') as log:
     proc = subprocess.Popen([emulator, '--fullscreen', 'false', str(root/('build/shader-probe-'+mode)/'eboot.bin')],
         stdout=log, stderr=log, env=dict(os.environ, XDG_DATA_HOME=str(profile), SDL_VIDEODRIVER='x11'), start_new_session=True)
     try:
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + (180 if mode == 'textureupload' else 60)
         captured = False
         while time.monotonic() < deadline:
             text = guest.read_text(errors='replace') if guest.exists() else ''
@@ -45,6 +45,8 @@ with (out/'emulator.log').open('w') as log:
             raise RuntimeError('Probe did not capture and exit cleanly; inspect artifacts/shader-probe')
         if 'Unhandled access violation' in host or 'FAIL' in text or 'FAILED' in text:
             raise RuntimeError('Guest failure; inspect logs')
+        if mode == 'textureupload' and 'PASS static texture upload cases=18 updates=36' not in text:
+            raise RuntimeError('Static mip-chain byte comparison did not complete')
         from PIL import Image
         image = Image.open(out/'capture.png').convert('RGB')
         if image.size != (1280,720):
@@ -76,7 +78,7 @@ with (out/'emulator.log').open('w') as log:
                     face = min(int((x+.5)*6/1280),5)
                     lit = y < 240 or (y < 480 and face%2 == 1)
                     expected = (0,255,0) if lit else (255,0,0)
-                elif mode == 'videoupload':
+                elif mode in ('textureupload','videoupload'):
                     expected = (255,0,0) if ((x*513//1280)+(y*509//720))%2 else (0,255,0)
                 elif mode == 'streaming':
                     expected = (255,0,0) if (((x//16)%3)+((y//16)%3))%2 else (0,255,0)
@@ -94,6 +96,7 @@ with (out/'emulator.log').open('w') as log:
             raise RuntimeError(f'{wrong}/921600 pixels differ from expected {mode} pattern')
         print('PASS:', mode, '921600 pixels, guest exit 0;', out/'capture.png')
     finally:
+        if guest.exists(): (out/'probe.log').write_bytes(guest.read_bytes())
         if proc.poll() is None:
             import signal
             os.killpg(proc.pid, signal.SIGTERM)

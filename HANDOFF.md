@@ -1,3 +1,31 @@
+## 2026-10-10: static tiled texture uploads improve loading (0.17)
+
+[Full results and limits](docs/TEXTURE-COPY-017.md). Same-package A/B/A/B Mars City
+first-map runs:122.082/116.678/148.468/87.706s total. Upload itself is repeatable:
+72.820/40.468/72.822/40.472s; waits32.91→1.9s with all fences retained. CPU-pack
+cost37.64s remains inside upload. File reads15.7–34.8s vary independently; don't
+claim a universal percentage from total times. No gameplay FPS gain established.
+Packed2062/2067 images;5 use generic fallback. Both packed runs reached gameplay.
+
+Final0.17 defaults r_ps4PackedTextures1; batch remains0. SHA256
+12b0eabf59efc5cfe26730b413facbac8e1e21631a57e875850237396c486f60.
+Full installed hash and config/save preservation verified. Earlier opt-in0.17
+SHA7313eb59... and matching ELF retained in artifacts/texture-copy-017/opt-in/;
+use matching ELF if controlling an old process after rebuilding. Current runtime
+and dist are final default-on.0.16 rollback also retained. No assets committed.
+
+Current DoomPID257, worker218 launch ticket12/scratch0x3c000, credentials restored.
+Receiver217/worker218 suspended; ShellCore42 last resume ticket11. Completed
+receiver-owned installation task577 retained. Verify live identity before using
+session state; never poll worker completion while suspended. Final first-map
+PASS:120.918s total/image84.785s/upload40.431s;2062packed/5generic.
+Playable hangar screenshot inspected; native full-byte validation not claimed.
+Defaults read back: packed1,batch0,parallel0,shadows1,fraction100.
+Final stationary hangar baseline6.7065FPS/19.8315s; no gameplay FPS gain claimed.
+Artifacts/texture-copy-017/, final/ and opt-in/. Emulator probe compares38.8MB of
+GPU-written backing across18 shape/heap cases,36 updates, with guards; passed.
+Physical byte-for-byte probe is not claimed. Full emulator map60frames passed.
+
 ## 2026-10-10: bounded upload experiment tested; kept opt-in
 
 See [0.16 experiment](docs/UPLOAD-BATCH-016.md). B/A/B physical first-map loads:

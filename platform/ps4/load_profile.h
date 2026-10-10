@@ -1,9 +1,9 @@
 #pragma once
 #include <stdint.h>
-// Inclusive intervals: decode includes file_read, upload includes submit_wait.
+// Inclusive intervals: decode includes file_read, upload includes CPU packing and most submit/wait work.
 // Thread sums may exceed wall time. No GPU timestamp claims.
 enum D3LoadStage { D3LP_FILE, D3LP_DECODE, D3LP_HASH, D3LP_MIPS,
-                   D3LP_UPLOAD, D3LP_WAIT, D3LP_COUNT };
+                   D3LP_UPLOAD, D3LP_WAIT, D3LP_PACK, D3LP_COUNT };
 bool D3LoadActive();
 void D3LoadBegin();
 void D3LoadEnd();

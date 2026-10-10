@@ -31,7 +31,7 @@ void D3LoadEnd() {
     const uint64_t end=nowNs();
     Sys_Printf("PS4 LOADPROFILE wall_ms=%.3f inclusive=1 thread_sums=1\n",
                end>=windowStart?(end-windowStart)/1000000.0:0.0);
-    const char *names[]={"file_read_inflate","image_program","image_hash","mip_chain","texture_upload","submit_wait"};
+    const char *names[]={"file_read_inflate","image_program","image_hash","mip_chain","texture_upload","submit_wait","cpu_pack"};
     for(int i=0;i<D3LP_COUNT;++i)
         Sys_Printf("PS4 LOADPROFILE stage=%s calls=%llu sum_ms=%.3f\n",names[i],
                    (unsigned long long)calls[i].load(),elapsed[i].load()/1000000.0);

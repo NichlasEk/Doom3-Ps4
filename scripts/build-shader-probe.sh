@@ -6,12 +6,13 @@ converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
 case "$mode" in
-  videoupload|streaming|sampledpresent|depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
-  *) echo 'Use streaming, sampledpresent, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
+  textureupload|videoupload|streaming|sampledpresent|depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
+  *) echo 'Use textureupload, videoupload, streaming, sampledpresent, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
 esac
 out="$root/build/shader-probe-$mode"
 defines=()
 extra_objects=()
+if [[ "$mode" == textureupload ]]; then mode=videoupload; defines+=(-DPROBE_STATIC_UPLOAD); fi
 if [[ "$mode" == sampledpresent ]]; then mode=present; defines+=(-DPROBE_SAMPLED_PRESENT); fi
 if [[ "$mode" == depthregion ]]; then mode=depthcopy; defines+=(-DPROBE_DEPTH_STENCIL -DPROBE_DEPTH_REGION); fi
 if [[ "$mode" == stencilcast ]]; then mode=shadowcast; defines+=(-DPROBE_DEPTH_STENCIL); fi

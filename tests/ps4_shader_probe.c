@@ -39,6 +39,10 @@ static const float g_vertices[] = {
 #define CHECK(call) do { VkResult result = (call); if (result != VK_SUCCESS) { \
     vk_ps4_log("FAIL %s: %d", #call, result); return 1; } } while (0)
 
+#ifdef PROBE_STATIC_UPLOAD
+#include "probe_texture_upload.h"
+#endif
+
 #ifdef PROBE_LIGHTING
 #include "probe_lighting.h"
 #ifdef PROBE_SHADOW_CAST
@@ -658,6 +662,10 @@ int main(void) {
     cb_ai.commandBufferCount = 1;
     VkCommandBuffer cmd;
     CHECK(vkAllocateCommandBuffers(dev, &cb_ai, &cmd));
+
+#ifdef PROBE_STATIC_UPLOAD
+    if (probe_texture_upload(dev,queue,cmd)) {vk_ps4_log("FAIL static upload probe");return 1;}
+#endif
 
     /* 13. Create sync objects */
     VkSemaphoreCreateInfo sem_ci = {0};

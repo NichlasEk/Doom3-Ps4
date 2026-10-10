@@ -402,7 +402,7 @@ index 0000000..cdd9989
 +};
 +static const unsigned meta_clear_color_offsets[4] = {63,67,71,75};
 diff --git a/src/vk_ps4_command.c b/src/vk_ps4_command.c
-index 168c1f3..315280e 100644
+index 168c1f3..1aa001b 100644
 --- a/src/vk_ps4_command.c
 +++ b/src/vk_ps4_command.c
 @@ -11,15 +11,18 @@
@@ -1465,7 +1465,7 @@ index 168c1f3..315280e 100644
      /* Linear-to-linear image copy via per-row CopyMemory.
       * Tiled texture copies require a shader-based blit or CP DMA with
       * surface info — deferred to a future shader-blit phase. */
-@@ -2046,117 +2436,288 @@ vk_ps4_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, V
+@@ -2046,117 +2436,360 @@ vk_ps4_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, V
      if (!src || !dst || !src->memory || !dst->memory) return;
      if (!src->memory->gnm_mem.mapped || !dst->memory->gnm_mem.mapped) return;
  
@@ -1619,6 +1619,78 @@ index 168c1f3..315280e 100644
          }
      }
 -    (void)dstImageLayout;
++}
++
++/* CPU-owned static mip chains: pre-tile staging, then issue bounded DMA copies.
++ * This deliberately does not change vkCmdCopyBufferToImage semantics. */
++static uint64_t doom3_texture_layout(VkPs4Image *img) {
++    if (!img || !img->memory || !img->memory->gnm_mem.mapped ||
++        img->is_render_target || img->is_depth_target || img->is_swapchain_image ||
++        img->create_info.format != VK_FORMAT_R8G8B8A8_UNORM ||
++        img->create_info.imageType != VK_IMAGE_TYPE_2D ||
++        img->create_info.tiling != VK_IMAGE_TILING_OPTIMAL ||
++        !img->create_info.mipLevels || img->create_info.mipLevels > 11 ||
++        img->create_info.arrayLayers != 1 || img->create_info.flags ||
++        img->create_info.samples != VK_SAMPLE_COUNT_1_BIT ||
++        !img->create_info.extent.width || img->create_info.extent.width > 1024 ||
++        !img->create_info.extent.height || img->create_info.extent.height > 1024 ||
++        img->create_info.extent.depth != 1 ||
++        !(img->create_info.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) ||
++        img->memory_offset > img->memory->size) return 0;
++    GpaTextureInfo info = sceGnmTexBuildInfo(&img->gnm_texture);
++    uint64_t end = 0;
++    for (unsigned mip=0; mip<img->create_info.mipLevels; ++mip) {
++        uint64_t size=0, offset=0;
++        if (sceGpaComputeSurfaceSizeOffset(&size,&offset,&info,mip,0) != GPA_ERR_OK ||
++            size < 4 || (size & 3) || (offset & 3) || offset < end ||
++            offset > 16*1024*1024 || size > 16*1024*1024-offset ||
++            offset > img->memory->size-img->memory_offset ||
++            size > img->memory->size-img->memory_offset-offset) return 0;
++        end = offset+size;
++    }
++    return end;
++}
++size_t doom3_ps4_texture_bytes(VkImage image) {
++    return doom3_texture_layout((VkPs4Image*)image);
++}
++int doom3_ps4_pack_texture_mip(VkImage image, unsigned mip, unsigned w, unsigned h,
++                              const void *rgba, void *packed, size_t capacity) {
++    VkPs4Image *img=(VkPs4Image*)image;
++    const uint64_t bytes=doom3_texture_layout(img);
++    if (!bytes || !rgba || !packed || capacity<bytes || mip>=img->create_info.mipLevels ||
++        w != (img->create_info.extent.width>>mip ? img->create_info.extent.width>>mip : 1) ||
++        h != (img->create_info.extent.height>>mip ? img->create_info.extent.height>>mip : 1)) return 0;
++    GpaTextureInfo info=sceGnmTexBuildInfo(&img->gnm_texture);
++    GpaTilingParams tp={0}; GpaSurfaceContext context={0};
++    uint64_t size=0, base=0;
++    if (sceGpaComputeSurfaceSizeOffset(&size,&base,&info,mip,0)!=GPA_ERR_OK ||
++        sceGpaTpInit(&tp,&info,mip,0)!=GPA_ERR_OK ||
++        sceGpaInitSurfaceContext(&context,size,&tp)!=GPA_ERR_OK) return 0;
++    for (unsigned y=0; y<h; ++y) for (unsigned x=0; x<w; ++x) {
++        uint64_t offset=0,bit=0;
++        if (sceGpaComputeSurfaceCoord(&offset,&bit,&context,x,y,0,0)!=GPA_ERR_OK ||
++            bit || offset>size-4) return 0;
++        memcpy((char*)packed+base+offset,(const char*)rgba+((size_t)y*w+x)*4,4);
++    }
++    return 1;
++}
++void doom3_ps4_copy_texture(VkCommandBuffer cb, VkBuffer buffer,
++                            VkDeviceSize offset, VkImage image) {
++    VkPs4CommandBuffer *cmd=(VkPs4CommandBuffer*)cb;
++    VkPs4Buffer *src=(VkPs4Buffer*)buffer; VkPs4Image *dst=(VkPs4Image*)image;
++    if (!cmd) return;
++    const uint64_t size=doom3_texture_layout(dst);
++    if (!size || !src || !src->memory || !src->memory->gnm_mem.mapped ||
++        !(src->create_info.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) || (offset&3) ||
++        src->memory_offset>src->memory->size ||
++        src->create_info.size>src->memory->size-src->memory_offset ||
++        offset>src->create_info.size || size>src->create_info.size-offset) {
++        cmd->resource_error=VK_ERROR_INITIALIZATION_FAILED; return;
++    }
++    if (!sceGnmDrawCmdCopyMemory(&cmd->gnm_cmd,
++        (uint64_t)dst->memory->gnm_mem.mapped+dst->memory_offset,
++        (uint64_t)src->memory->gnm_mem.mapped+src->memory_offset+offset,(uint32_t)size))
++        cmd->resource_error=VK_ERROR_OUT_OF_DEVICE_MEMORY;
 +}
 +
 +/* Explicit CPU video staging: preserve the existing sampled tiled layout.
@@ -1847,7 +1919,7 @@ index 168c1f3..315280e 100644
  /* === Render pass commands === */
  
  /* Check if attachment `att_idx` is used by subpass `subpass` (via any
-@@ -2318,7 +2879,9 @@ vk_ps4_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBegin
+@@ -2318,7 +2951,9 @@ vk_ps4_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBegin
                  sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
  
                  /* Trigger the lazy clear with a fullscreen draw. */
@@ -1858,7 +1930,7 @@ index 168c1f3..315280e 100644
  
              } else if (view->image->is_render_target) {
                  const VkClearColorValue *cc =
-@@ -2341,13 +2904,7 @@ vk_ps4_CmdEndRenderPass(VkCommandBuffer commandBuffer) {
+@@ -2341,13 +2976,7 @@ vk_ps4_CmdEndRenderPass(VkCommandBuffer commandBuffer) {
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1873,7 +1945,7 @@ index 168c1f3..315280e 100644
      GnmDbRenderControl db_ctrl;
      memset(&db_ctrl, 0, sizeof(db_ctrl));
      db_ctrl.depthclearenable = 0;
-@@ -2460,7 +3017,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
+@@ -2460,7 +3089,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
                          db_ctrl.depthclearenable = has_depth ? 1 : 0;
                          db_ctrl.stencilclearenable = has_stencil ? 1 : 0;
                          sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
@@ -1884,7 +1956,7 @@ index 168c1f3..315280e 100644
                      }
                  }
              }
-@@ -2492,7 +3051,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
+@@ -2492,7 +3123,9 @@ vk_ps4_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents)
                          db_ctrl.depthclearenable = has_depth ? 1 : 0;
                          db_ctrl.stencilclearenable = has_stencil ? 1 : 0;
                          sceGnmDrawCmdSetDbRenderControl(&cmd->gnm_cmd, &db_ctrl);
@@ -1895,7 +1967,7 @@ index 168c1f3..315280e 100644
                      }
                  }
              }
-@@ -2516,19 +3077,42 @@ vk_ps4_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sr
+@@ -2516,19 +3149,42 @@ vk_ps4_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sr
      if (!commandBuffer) return;
      VkPs4CommandBuffer *cmd = (VkPs4CommandBuffer *)commandBuffer;
  
@@ -1948,7 +2020,7 @@ index 168c1f3..315280e 100644
  
      (void)srcStageMask;
      (void)dstStageMask;
-@@ -2609,117 +3193,57 @@ VKAPI_ATTR void VKAPI_CALL
+@@ -2609,117 +3265,57 @@ VKAPI_ATTR void VKAPI_CALL
  vk_ps4_CmdClearColorImage(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout,
                            const VkClearColorValue *pColor, uint32_t rangeCount,
                            const VkImageSubresourceRange *pRanges) {
@@ -2115,7 +2187,7 @@ index 168c1f3..315280e 100644
  }
  
  VKAPI_ATTR void VKAPI_CALL
-@@ -2756,7 +3280,9 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
+@@ -2756,7 +3352,9 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
          0, 0,
          img->create_info.extent.width,
          img->create_info.extent.height);
@@ -2126,7 +2198,7 @@ index 168c1f3..315280e 100644
  
      /* Iterate ranges to validate bounds (API contract). The lazy clear
       * covers the entire target regardless of ranges. */
-@@ -2773,237 +3299,122 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
+@@ -2773,237 +3371,122 @@ vk_ps4_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, V
      (void)imageLayout;
  }
  

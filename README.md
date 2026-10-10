@@ -1,18 +1,19 @@
 # Doom 3 PS4 port
 
-**The user confirms the game works on physical PS4 with game data bundled in
-the PKG (2026-09-30).** Their slow USB stick caused the previous file-reading
-problem; bundling the data resolved it in their test.
+The native client runs on physical PS4 with controller input and audio enabled.
+Current work uses external owned game data on the console, plus remote package
+installation, launch, input and log capture. Continue from [the current handoff](HANDOFF.md).
 
-Continue from [the current handoff](HANDOFF.md) and the
-[bundled-data 0.07 candidate](docs/BUNDLED-DATA-007.md). The latest physical
-report does not specify an exact installed version. The client runs continuously
-with native controller input. Audio remains disabled; save/load, extended play
-and remaining rendering artifacts still need work.
+[0.17 static texture uploads](docs/TEXTURE-COPY-017.md) reduced the measured Mars
+City texture-upload interval from 72.82 s to 40.47 s in repeated physical on/off tests.
+Whole-map loading also depends on variable file and game initialization time;
+this is not a gameplay FPS improvement or a fix for remaining video artifacts.
+The new path is enabled by default; bounded submission batching remains off.
 
-For local packaging use `--bundle-data --game-data media/game`; the script's
-default still builds the older external-data variant. Retail packages stay
-local and ignored by Git.
+`scripts/package-ps4-client.py` defaults to an external-data package. For local
+bundling use `--bundle-data --game-data media/game`. Retail assets and generated
+packages stay local and ignored by Git. The older [0.07 bundled-data report](docs/BUNDLED-DATA-007.md)
+is historical; current package hashes and physical results are in the handoff.
 
 The separate [dhewm3](https://github.com/dhewm/dhewm3) dedicated diagnostic also
 reads retail archives, compiles `doom_main.script` and runs 60 engine frames.
