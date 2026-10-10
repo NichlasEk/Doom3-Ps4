@@ -1,3 +1,29 @@
+## 2026-10-10: clarified target and fresh-process first-map measurement
+
+User means the loading screen AFTER the main menu, before the game begins,
+not application startup. Restarted final0.17 remotely; fresh DoomPID266.
+Started game/mars_city1 through SDL console after checking packed1/batch0/
+parallel0. First-map116.627s: proc0.829s, game32.229s, media83.404s,
+settle0.165s. Image window80.665s, read/inflate30.750s, upload40.648s,
+including CPU-pack37.654s and wait1.939s. Inclusive stages must not be summed.
+Same stable upload cost as earlier, variable I/O/game phase. No new optimization
+or performance improvement claimed from this run; filesystem cache not reset.
+
+Verified arrival intro via capture after loading; game tick/health100/cinematic1
+confirmed. Engine log buffered until later; condump independently confirmed total.
+Artifacts/texture-copy-017/fresh-start-result/{engine.log,engine.summary.json,
+vulkan.log}; freshload018-settings.txt; freshloadresult018-settings.txt.
+Capture artifacts/ps4-probe/captures/remote1791631001090937003.png retains the
+known video inset/text corruption. No screenshot during engine load interval.
+
+Next candidate: bounded reusable texel-offset tables keyed by full Gpa surface
+context plus dimensions, to avoid repeated per-pixel surface address computation.
+Must retain fallback, bounds, fences and byte-comparison tests; no implementation
+or new PKG yet. Also investigate read/inflate variance separately from CPU-pack.
+Current worker launch ticket13/scratch0x40000, credentials restored; ShellCore
+resume ticket12. Receiver/worker suspended while Doom266 runs; don't query worker
+completion until active. New SDL session belongs only to this live PID266.
+
 ## 2026-10-10: user confirms 0.17 improvement; startup investigation
 
 User physically tested 0.17 and reports it became really good. Existing fix
