@@ -47,7 +47,7 @@ index 8c44223..0d1d405 100644
 +
 +libpsbc/psbc_compile.orbis.o: libpsbc/psbc_compile.h
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a..a61e21a 100644
+index bacbc6a..7ea5dc3 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -225,6 +225,8 @@ static PsbcResult buildshaderbinary(
@@ -421,7 +421,25 @@ index bacbc6a..a61e21a 100644
      /* Determine previous stage for shader args declaration.
       * HS/GS need previous_stage=VERTEX so that the merged-pipeline args
       * (prolog_inputs, vertex_buffers, etc.) are declared for the NIR
-@@ -1144,6 +1251,7 @@ const char* psbc_result_string(PsbcResult result) {
+@@ -1090,6 +1197,7 @@ PsbcResult psbc_compile_shader(
+     );
+ 
+     if (!binary) {
++        ralloc_free(nir);
+         psbc_shutdown();
+         return PSBC_RESULT_COMPILE_ACO;
+     }
+@@ -1127,6 +1235,9 @@ PsbcResult psbc_compile_shader(
+     out->size = output_size;
+ 
+     free(binary);
++    /* The caller owns the temporary NIR, including its ralloc children.
++     * buildshaderbinary has finished reading it; output_data owns its bytes. */
++    ralloc_free(nir);
+     psbc_shutdown();
+ 
+     return result;
+@@ -1144,6 +1255,7 @@ const char* psbc_result_string(PsbcResult result) {
      switch (result) {
      case PSBC_RESULT_OK:               return "success";
      case PSBC_RESULT_INVALID_SPIRV:    return "invalid SPIR-V bytecode";

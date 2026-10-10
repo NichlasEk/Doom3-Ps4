@@ -1,0 +1,106 @@
+--- a/alc/context.h
++++ b/alc/context.h
+@@ -172,7 +172,7 @@
+      * object. Add a wrapper function for it that only accesses it where it's
+      * defined.
+      */
+-#ifdef __MINGW32__
++#if defined(__MINGW32__) || defined(__PS4__)
+     static ALCcontext *getThreadContext() noexcept;
+     static void setThreadContext(ALCcontext *context) noexcept;
+ #else
+--- a/alc/context.cpp
++++ b/alc/context.cpp
+@@ -105,7 +105,7 @@
+ ALeffect ALCcontext::sDefaultEffect;
+ 
+ 
+-#ifdef __MINGW32__
++#if defined(__MINGW32__) || defined(__PS4__)
+ ALCcontext *ALCcontext::getThreadContext() noexcept
+ { return sLocalContext; }
+ void ALCcontext::setThreadContext(ALCcontext *context) noexcept
+--- a/common/threads.h
++++ b/common/threads.h
+@@ -11,7 +11,9 @@
+ #define FORCE_ALIGN
+ #endif
+ 
+-#if defined(__APPLE__)
++#if defined(__PS4__)
++#include <pthread.h>
++#elif defined(__APPLE__)
+ #include <dispatch/dispatch.h>
+ #elif !defined(_WIN32)
+ #include <semaphore.h>
+@@ -26,6 +28,12 @@
+     using native_type = void*;
+ #elif defined(__APPLE__)
+     using native_type = dispatch_semaphore_t;
++#elif defined(__PS4__)
++    struct native_type {
++        pthread_mutex_t mutex;
++        pthread_cond_t cond;
++        unsigned count;
++    };
+ #else
+     using native_type = sem_t;
+ #endif
+--- a/common/threads.cpp
++++ b/common/threads.cpp
+@@ -160,6 +160,55 @@
+ 
+ } // namespace al
+ 
++#elif defined(__PS4__)
++
++#include <cstdlib>
++#include <climits>
++namespace al {
++semaphore::semaphore(unsigned int initial)
++{
++    mSem.count = initial;
++    if (pthread_mutex_init(&mSem.mutex, nullptr))
++        throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
++    if (pthread_cond_init(&mSem.cond, nullptr)) {
++        pthread_mutex_destroy(&mSem.mutex);
++        throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
++    }
++}
++semaphore::~semaphore()
++{
++    pthread_cond_destroy(&mSem.cond);
++    pthread_mutex_destroy(&mSem.mutex);
++}
++void semaphore::post()
++{
++    if (pthread_mutex_lock(&mSem.mutex)) std::abort();
++    if (mSem.count == UINT_MAX) {
++        pthread_mutex_unlock(&mSem.mutex);
++        throw std::system_error(std::make_error_code(std::errc::value_too_large));
++    }
++    ++mSem.count;
++    if (pthread_cond_signal(&mSem.cond)) std::abort();
++    if (pthread_mutex_unlock(&mSem.mutex)) std::abort();
++}
++void semaphore::wait() noexcept
++{
++    if (pthread_mutex_lock(&mSem.mutex)) std::abort();
++    while (!mSem.count)
++        if (pthread_cond_wait(&mSem.cond, &mSem.mutex)) std::abort();
++    --mSem.count;
++    if (pthread_mutex_unlock(&mSem.mutex)) std::abort();
++}
++bool semaphore::try_wait() noexcept
++{
++    if (pthread_mutex_lock(&mSem.mutex)) std::abort();
++    const bool ready = mSem.count != 0;
++    if (ready) --mSem.count;
++    if (pthread_mutex_unlock(&mSem.mutex)) std::abort();
++    return ready;
++}
++} // namespace al
++
+ #else /* !__APPLE__ */
+ 
+ #include <cerrno>

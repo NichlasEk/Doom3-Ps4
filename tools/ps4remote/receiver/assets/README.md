@@ -1,0 +1,3 @@
+Icon generated with the built-in image_gen tool, 2026-10-09. Original preserved in icon-source.png; icon0.png is an opaque 512x512 RGB package derivative.
+
+Prompt: Use case: stylized-concept. Create a square app icon for PS4 Remote Receiver, a homebrew remote console management tool. A bold futuristic metallic game controller integrated with a luminous wireless signal and a small transfer arrow, centered on deep midnight blue black background. Electric cyan and blue edge lighting, premium science fiction console aesthetic, strong clean silhouette readable at 512x512, subtle circuitry, generous safe margins. No lettering, no logos, no watermark. Opaque square image.

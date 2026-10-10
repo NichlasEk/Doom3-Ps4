@@ -17,11 +17,11 @@ parser.add_argument('--bundle-data', action='store_true', help='Local owned-data
 parser.add_argument('--skip-build', action='store_true', help='Package the already built, tested client')
 args = parser.parse_args()
 if args.bundle_data and not args.game_data: parser.error('--bundle-data requires --game-data')
-version = '00.07' if args.bundle_data else '00.05'
-candidate = 'Bundled Data Test 0.07' if args.bundle_data else 'Playable Alpha 0.05'
+version = '00.14'
+candidate = 'Monotonic Clock 0.14' if args.bundle_data else 'Monotonic Clock External 0.14'
 sdk = Path(os.environ.get('OO_PS4_TOOLCHAIN', '/opt/openorbis/OpenOrbis/PS4Toolchain'))
 pkgtool, gp4tool = sdk/'bin/linux/PkgTool.Core', sdk/'bin/linux/create-gp4'
-stage, dist = root/('build/client-package-bundled-007' if args.bundle_data else 'build/client-package-playable-005'), root/'dist'
+stage, dist = root/('build/client-package-bundled-014' if args.bundle_data else 'build/client-package-playable-014'), root/'dist'
 artifacts = root/'artifacts/package'
 for directory in (stage, dist, artifacts):
     directory.mkdir(parents=True, exist_ok=True)
@@ -45,14 +45,22 @@ def stage_file(source, name):
 # Record exact build provenance in the package, not only in a local manifest.
 def digest(source):
     with Path(source).open('rb') as f: return hashlib.file_digest(f,'sha256').hexdigest()
+if b'BUILD 0.14 graphics=0.12 video=cpu-tiled-staging audio=0.09 clock=orbis-monotonic' not in elf.read_bytes():
+    raise SystemExit('Client is not the 0.14 monotonic-clock build; rebuild before packaging')
 if b'META CLEAR DOOM 0.03' not in elf.read_bytes():
     raise SystemExit('Client lacks new compiled color clear; rebuild before packaging')
 info = artifacts/'build-info.json'
 info.write_text(json.dumps(dict(candidate=candidate,
     engine_elf_sha256=digest(elf),
     eboot_sha256=digest(root/'build/client-runtime/eboot.bin'),
+    client_patch_sha256=digest(root/'patches/002-ps4-client.patch'),
+    openal_patch_sha256=digest(root/'patches/003-openal-ps4.patch'),
+    openal_archive_sha256=digest(root/'build/ps4-openal-release/libopenal.a'),
     vulkan_patch_sha256=digest(root/'patches/ps4-native/vulkan-ps4.patch'),
     native_icd_sha256=digest(root/'build/native/vulkan-ps4/libvulkan_ps4.a'),
+    graphics_baseline="0.07", shader_nir_cleanup=True,
+    psbc_patch_sha256=digest(root/'patches/ps4-native/opengnm-psbc.patch'),
+    psbc_archive_sha256=digest(root/'build/native/libpsbc-private.a'), audio_baseline="0.08", audio_enabled=True, audio_threading="0.09-output-worker", video_experiment="cpu-tiled-staging",
     physical_application_verified=False),indent=2)+'\n')
 stage_file(info, 'build-info.json')
 stage_file(root/'build/client-runtime/eboot.bin', 'eboot.bin')
@@ -71,6 +79,8 @@ for source, name in [
     (root/'build/native/vulkan-ps4/LICENSE', 'Vulkan-PS4-LICENSE'),
     (root/'thirdparty/ps4-native/README.md', 'Graphics-NOTICES.md'),
     (root/'docs/USB-DATA.md', 'USB-DATA.md'),
+    (root/'build/openal-soft-1.23.1/COPYING', 'OpenAL-Soft-COPYING'),
+    (root/'docs/VIDEO-UPLOAD-013.md', 'VIDEO-UPLOAD-013.md'),
 ]:
     stage_file(source, 'notices/'+name)
 if args.game_data:
@@ -122,7 +132,7 @@ ET.indent(tree)
 tree.write(project, encoding='utf-8', xml_declaration=True)
 with (artifacts/'pkg-build.log').open('w') as log:
     subprocess.run([str(pkgtool), 'pkg_build', 'pkg.gp4', '.'], cwd=stage, stdout=log, stderr=subprocess.STDOUT, check=True)
-package = dist/('Doom3-PS4-Bundled-Data-0.07.pkg' if args.bundle_data else 'Doom3-PS4-Playable-Alpha-0.05.pkg')
+package = dist/('Doom3-PS4-Bundled-Data-0.14.pkg' if args.bundle_data else 'Doom3-PS4-Playable-Alpha-0.14.pkg')
 shutil.copyfile(stage/(content_id+'.pkg'), package)
 with (artifacts/'pkg-validate.log').open('w') as log:
     subprocess.run([str(pkgtool), 'pkg_validate', '--verbose', str(package)], stdout=log, stderr=subprocess.STDOUT, check=True)

@@ -6,8 +6,8 @@ converter=${CREATE_FSELF:-/home/nichlas/ut99-orbis/build/create-fself-current}
 stack="$root/build/native"
 mode=${1:-demote}
 case "$mode" in
-  sampledpresent|depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
-  *) echo 'Use sampledpresent, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
+  videoupload|streaming|sampledpresent|depthregion|stencilcast|depthstencil|clear|demote|dynamic|present|generic|cube|ambient|shadow|texops|interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) ;;
+  *) echo 'Use streaming, sampledpresent, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion' >&2; exit 1 ;;
 esac
 out="$root/build/shader-probe-$mode"
 defines=()
@@ -19,6 +19,8 @@ if [[ "$mode" == depthstencil ]]; then mode=depthcopy; defines+=(-DPROBE_DEPTH_S
 if [[ "$mode" == clear ]]; then mode=present; defines+=(-DPROBE_CLEAR_ONLY); fi
 if [[ "$mode" != demote && "$mode" != dynamic && "$mode" != present ]]; then defines+=(-DPROBE_DUDE_GENERIC); fi
 case "$mode" in
+  videoupload) defines+=(-DPROBE_STREAMING_UPLOAD -DPROBE_TILED_VIDEO) ;;
+  streaming) defines+=(-DPROBE_STREAMING_UPLOAD) ;;
   cube) defines+=(-DPROBE_LIGHTING) ;;
   ambient) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT) ;;
   interaction|interactionshadow|cubeshadow|shadowcast|depthcopy) defines+=(-DPROBE_LIGHTING -DPROBE_DUDE_AMBIENT -DPROBE_INTERACTION) ;;

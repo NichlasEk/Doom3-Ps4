@@ -12,6 +12,7 @@ import subprocess
 root=Path(__file__).resolve().parent.parent
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--existing-extraction',action='store_true')
+parser.add_argument('--allow-bundled-data',action='store_true',help='Verify explicitly requested local bundled retail data')
 args=parser.parse_args()
 manifest=json.loads((root/'artifacts/package/manifest.json').read_text())
 package=Path(manifest['package'])
@@ -51,8 +52,18 @@ for name,expected in manifest['files'].items():
             raise SystemExit('Unexpected generated SFO fields')
     elif sha(app/name)!=expected:
         raise SystemExit('Extracted file mismatch: '+name)
-if manifest['contains_owned_retail_data'] or list(app.rglob('*.pk4')):
-    raise SystemExit('Retail PK4 data must stay outside the package')
+actual_pk4={p.relative_to(app).as_posix() for p in app.rglob('*') if p.suffix.lower()=='.pk4'}
+if manifest['contains_owned_retail_data']:
+    if not args.allow_bundled_data:
+        raise SystemExit('Bundled retail package requires explicit --allow-bundled-data')
+    expected_pk4={f'base/pak{i:03}.pk4' for i in range(5)}
+    declared_pk4={name for name in manifest['files'] if name.lower().endswith('.pk4')}
+    if actual_pk4 != expected_pk4 or declared_pk4 != expected_pk4:
+        raise SystemExit('Bundled package has an unexpected retail archive set')
+    if 'doom3-bundled-data.txt' not in manifest['files'] or (app/'doom3-bundled-data.txt').read_bytes()!=b'1\n':
+        raise SystemExit('Bundled package marker missing or invalid')
+elif actual_pk4 or (app/'doom3-bundled-data.txt').exists():
+    raise SystemExit('Retail data/marker must stay outside the external-data package')
 packed=sfo(app/'sce_sys/param.sfo')
 def field(key): return packed[key][1].rstrip(b'\0').decode()
 title_id=field('TITLE_ID')

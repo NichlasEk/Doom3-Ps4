@@ -27,6 +27,11 @@ frames = int(os.environ.get('CLIENT_TEST_FRAMES', '60'))
 if not 1 <= frames <= 100000: raise SystemExit('Invalid finite test frame count')
 (eboot.parent/'doom3-test-frames.txt').write_text(str(frames)+'\n')
 map_name = os.environ.get('CLIENT_TEST_MAP', '')
+new_game = os.environ.get('CLIENT_TEST_NEW_GAME') == '1'
+if new_game and map_name: raise SystemExit('Choose new-game intro or direct map, not both')
+new_game_marker = eboot.parent/'doom3-test-new-game.txt'
+if new_game: new_game_marker.write_text('1\n')
+else: new_game_marker.unlink(missing_ok=True)
 map_marker = eboot.parent/'doom3-test-map.txt'
 if map_name:
     if any(not (c.isalnum() or c in '_/') for c in map_name): raise SystemExit('Invalid map name')
@@ -86,6 +91,7 @@ with (out/'emulator.log').open('w') as log:
     try:
         deadline = time.monotonic()+float(os.environ.get('CLIENT_TIMEOUT', '240'))
         last_capture = 0.0
+        progress_count = 0
         while time.monotonic() < deadline:
             engine = engine_log.read_text(errors='replace') if engine_log.exists() else ''
             host = (out/'emulator.log').read_text(errors='replace')
@@ -101,6 +107,9 @@ with (out/'emulator.log').open('w') as log:
                     keys(False);input_released=True
             if 'QueuePresent: flip done' in gpu and time.monotonic()-last_capture > 3:
                 subprocess.run(['import', '-window', 'root', str(out/'progress.png')], check=True)
+                if new_game and 'PS4 TEST NEW GAME INTRO' in engine:
+                    progress_count += 1
+                    (out/f'intro-{progress_count:03}.png').write_bytes((out/'progress.png').read_bytes())
                 last_capture = time.monotonic()
             if not captured and 'CLIENT CAPTURE READY' in gpu:
                 time.sleep(.5)
@@ -124,6 +133,7 @@ with (out/'emulator.log').open('w') as log:
     success = (f'PASS PS4 client {frames} frames' in engine and 'Exiting with status code 0' in host
                and 'Unhandled access violation' not in host and captured
                and (not map_name or ('PS4 GAME tick=' in engine and 'ERROR:' not in engine)))
+    if new_game: success = success and 'PS4 TEST NEW GAME INTRO guis/intro.gui' in engine
     input_evidence={}
     if input_test:
         samples=re.findall(r'PS4 GAME tick=(\d+) pos=([-\d.]+),([-\d.]+),([-\d.]+) yaw=([-\d.]+) buttons=(\d+) move=([-\d]+),([-\d]+)',engine)
@@ -132,7 +142,7 @@ with (out/'emulator.log').open('w') as log:
             fire_command=any(int(s[5])&1 for s in samples),released=input_released,
             stopped_after_release=bool(samples) and int(samples[-1][6])==0 and int(samples[-1][7])==0 and not (int(samples[-1][5])&1))
         success=success and all(input_evidence.values())
-    result = dict(input_evidence=input_evidence, map=map_name, initialized='PASS PS4 client initialization' in engine,
+    result = dict(input_evidence=input_evidence, map=map_name, new_game_intro=new_game, initialized='PASS PS4 client initialization' in engine,
                   requested_frames=frames, frames_completed=f'PASS PS4 client {frames} frames' in engine,
                   captured=captured, clean_exit='Exiting with status code 0' in host,
                   diagnostic_passed=success, visual_validation='not performed', physical_ps4_tested=False)

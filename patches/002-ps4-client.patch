@@ -1,5 +1,5 @@
 diff --git a/neo/CMakeLists.txt b/neo/CMakeLists.txt
-index f5ec87b..25e3276 100644
+index f5ec87b..cab8a1d 100644
 --- a/neo/CMakeLists.txt
 +++ b/neo/CMakeLists.txt
 @@ -1,6 +1,9 @@
@@ -9,12 +9,12 @@ index f5ec87b..25e3276 100644
 +if(DHEWM3_PS4_BRINGUP)
 +  add_definitions(-DDHEWM3_PS4_BRINGUP)
 +endif()
-
+ 
  # TODO
-
+ 
 @@ -198,8 +201,13 @@ if(CMAKE_MAJOR_VERSION LESS 3 OR ( CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_V
  endif()
-
+ 
  # libs
 -find_package(OpenAL REQUIRED)
 -include_directories(${OPENAL_INCLUDE_DIR})
@@ -25,7 +25,7 @@ index f5ec87b..25e3276 100644
 +  find_package(OpenAL REQUIRED)
 +  include_directories(${OPENAL_INCLUDE_DIR})
 +endif()
-
+ 
  # SDL backend auto-fallback. SDL2 is the preferred, maximally-portable base (and on
  # modern distros it transparently rides sdl2-compat -> SDL3). If SDL2 is requested (the
 @@ -661,7 +669,7 @@ if(D3_COMPILER_IS_GCC_OR_CLANG)
@@ -39,10 +39,10 @@ index f5ec87b..25e3276 100644
  	endif()
 @@ -1588,6 +1596,9 @@ if(HARDLINK_GAME)
  endif()# HARDLINK_GAME
-
+ 
  if(CORE)
 +  if(DHEWM3_PS4)
-+    list(APPEND src_sys_core ${src_stub_openal} "${DOOM3_PS4_ROOT}/platform/ps4/videoout_wsi.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/storage.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/present.cpp")
++    list(APPEND src_sys_core "${DOOM3_PS4_ROOT}/platform/ps4/audio.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/tls_destructors.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/videoout_wsi.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/storage.cpp" "${DOOM3_PS4_ROOT}/platform/ps4/present.cpp")
 +  endif()
  	add_executable(${DHEWM3BINARY} WIN32 MACOSX_BUNDLE
  		${src_core}
@@ -50,22 +50,22 @@ index f5ec87b..25e3276 100644
 @@ -1601,13 +1612,19 @@ if(CORE)
  		set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${DHEWM3BINARY})
  	endif()
-
+ 
 -	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX neo FILES ${src_core} ${src_sys_base} ${src_sys_core} ${src_imgui} ${src_editor_tools})
 +	if(NOT DHEWM3_PS4)
 +    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX neo FILES ${src_core} ${src_sys_base} ${src_sys_core} ${src_imgui} ${src_editor_tools})
 +    endif()
-
+ 
  	# generated embedded-shader table - out-of-tree, so added via target_sources
  	# (source_group(TREE) rejects files outside the source dir)
  	target_sources(${DHEWM3BINARY} PRIVATE ${embed_shaders_out})
-
+ 
  	target_include_directories(${DHEWM3BINARY} PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui")
 +  if(DHEWM3_PS4)
 +    target_include_directories(${DHEWM3BINARY} PRIVATE "${DOOM3_PS4_ROOT}/platform/ps4" "${DOOM3_PS4_ROOT}/build/ps4-usb")
-+    target_link_libraries(${DHEWM3BINARY} "${DOOM3_PS4_ROOT}/build/ps4-usb/libdoom3-jbc.a")
++    target_link_libraries(${DHEWM3BINARY} "${DOOM3_PS4_ROOT}/build/ps4-usb/libdoom3-jbc.a" "${DOOM3_PS4_ROOT}/build/ps4-openal-release/libopenal.a")
 +  endif()
-
+ 
  if(DHEWM3_VULKAN)
  	# vendored FSR2 headers so the Vulkan backend can #include "ffx_fsr2.h" / "vk/ffx_fsr2_vk.h"
 @@ -1637,6 +1654,7 @@ endif()
@@ -75,7 +75,7 @@ index f5ec87b..25e3276 100644
 +        ${PS4_NATIVE_LIBS}
  		Threads::Threads
  	)
-
+ 
 diff --git a/neo/framework/Common.cpp b/neo/framework/Common.cpp
 index eab063d..4d6f4d7 100644
 --- a/neo/framework/Common.cpp
@@ -92,38 +92,38 @@ index eab063d..4d6f4d7 100644
  		// DG: update tic number here for ticNumAtStart (used below to decide whether to sleep before next frame)
  		Com_UpdateTicNumber();
 @@ -2696,6 +2700,9 @@ void idCommonLocal::Frame( void ) {
-
+ 
  		// pump all the events
  		Sys_GenerateEvents();
 +		#ifdef DHEWM3_PS4_BRINGUP
 +		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: events generated\n");
 +		#endif
-
+ 
  		// write config file if anything changed
  		WriteConfiguration();
 @@ -2714,13 +2721,24 @@ void idCommonLocal::Frame( void ) {
  		}
-
+ 
  		eventLoop->RunEventLoop();
 +		#ifdef DHEWM3_PS4_BRINGUP
 +		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: event loop complete\n");
 +		#endif
-
+ 
  		// DG: prepare new ImGui frame - I guess this is a good place, as all new events should be available?
  		D3::ImGuiHooks::NewFrame();
-
+ 
  		Com_UpdateFrameTime(); // DG: put updating com_frameTime into a function
 +		#ifdef DHEWM3_PS4_BRINGUP
 +		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: frame time updated\n");
 +		#endif
-
+ 
 +		#ifndef DHEWM3_PS4_BRINGUP
  		idAsyncNetwork::RunFrame();
 +		#endif
 +		#ifdef DHEWM3_PS4_BRINGUP
 +		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: network frame complete\n");
 +		#endif
-
+ 
  		if ( idAsyncNetwork::IsActive() ) {
  			if ( idAsyncNetwork::serverDedicated.GetInteger() != 1 ) {
 @@ -2728,10 +2746,19 @@ void idCommonLocal::Frame( void ) {
@@ -137,39 +137,39 @@ index eab063d..4d6f4d7 100644
 +			#ifdef DHEWM3_PS4_BRINGUP
 +			if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: session frame end\n");
 +			#endif
-
+ 
  			// normal, in-sequence screen update
  			session->UpdateScreen( false );
 +			#ifdef DHEWM3_PS4_BRINGUP
 +			if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: screen update complete\n");
 +			#endif
  		}
-
+ 
  		// report timing information
 @@ -2746,6 +2773,9 @@ void idCommonLocal::Frame( void ) {
  		}
-
+ 
  		com_frameNumber++;
 +		#ifdef DHEWM3_PS4_BRINGUP
 +		if (firstDiagnosticFrame) Sys_Printf("PS4 diagnostic: frame logic complete\n");
 +		#endif
-
+ 
  		// set idLib frame number for frame based memory dumps
  		idLib::frameNumber = com_frameNumber;
 @@ -2811,6 +2841,9 @@ void idCommonLocal::Frame( void ) {
  		}
-
+ 
  		D3P_FRAMEMARK // tell profiler (tracy) that this is the end of a frame
 +		#ifdef DHEWM3_PS4_BRINGUP
 +		firstDiagnosticFrame = false;
 +		#endif
  	}
-
+ 
  	catch( idException & ) {
 @@ -3270,7 +3303,7 @@ void idCommonLocal::Init( int argc, char **argv ) {
  		exit(1);
  	}
-
+ 
 -#ifdef ID_DEDICATED
 +#if defined(ID_DEDICATED) && !defined(__PS4__)
  	// we want to use the SDL event queue for dedicated servers. That
@@ -178,7 +178,7 @@ index eab063d..4d6f4d7 100644
 @@ -3284,6 +3317,11 @@ void idCommonLocal::Init( int argc, char **argv ) {
  #endif
  #endif
-
+ 
 +#if defined(__PS4__)
 +	if (SDL_Init(0) != 0) {
 +		Sys_Error("Error while initializing SDL: %s", SDL_GetError());
@@ -192,19 +192,19 @@ index eab063d..4d6f4d7 100644
  		}
  	}
 +#endif
-
+ 
  	Sys_InitThreads();
-
+ 
 @@ -3442,7 +3481,9 @@ void idCommonLocal::Init( int argc, char **argv ) {
  	}
-
+ 
  	runAsyncThread = true;
 +	#ifndef DHEWM3_PS4_BRINGUP
  	Sys_CreateThread( AsyncThread, this, asyncThread, "AsyncThread" );
 +	#endif
  }
-
-
+ 
+ 
 diff --git a/neo/framework/Dhewm3SettingsMenu.cpp b/neo/framework/Dhewm3SettingsMenu.cpp
 index 95963d1..d066386 100644
 --- a/neo/framework/Dhewm3SettingsMenu.cpp
@@ -212,7 +212,7 @@ index 95963d1..d066386 100644
 @@ -6233,4 +6233,10 @@ int Com_DetectDudePreset( void )
  	return -1;
  }
-
+ 
 +// The normal GUI also refers to these when the optional ImGui editor is off.
 +int Com_DudeAABackend(void) { return 2; }
 +int Com_DetectDudeAA(void) { return 0; }
@@ -226,7 +226,7 @@ index 3c78c03..25b250e 100644
 +++ b/neo/framework/FileSystem.cpp
 @@ -3195,7 +3195,11 @@ idFile_InZip * idFileSystemLocal::ReadFileFromZip( pack_t *pak, fileInPack_t *pa
  	unzSetOffset64( pak->handle, pakFile->pos );
-
+ 
  	// clone handle and assign a new internal filestream to zip file to it
 -	unzFile uf = unzReOpen( pak->pakFilename, pak->handle );
 +	#ifdef __PS4__
@@ -248,20 +248,37 @@ index 3c78c03..25b250e 100644
  	if ( !backgroundThread.threadHandle ) {
  		Sys_CreateThread( BackgroundDownloadThread, &backgroundThread_exit, backgroundThread, "backgroundDownload" );
  	} else {
+diff --git a/neo/framework/Session_menu.cpp b/neo/framework/Session_menu.cpp
+index b937d9d..e41be8a 100644
+--- a/neo/framework/Session_menu.cpp
++++ b/neo/framework/Session_menu.cpp
+@@ -1713,3 +1713,12 @@ void idSessionLocal::SetCDKeyGuiVars( void ) {
+ 	guiMainMenu->SetStateString( "str_d3key_state", common->GetLanguageDict()->GetString( va( "#str_071%d", 86 + cdkey_state ) ) );
+ 	guiMainMenu->SetStateString( "str_xpkey_state", common->GetLanguageDict()->GetString( va( "#str_071%d", 86 + xpkey_state ) ) );
+ }
++
++#ifdef __PS4__
++// Test runner hook: exercise the same startGame path as the menu, including
++// guis/intro.gui. Called only for an explicit, finite /app0 test run.
++void PS4_TestNewGameIntro() {
++    sessLocal.HandleMainMenuCommands("startGame");
++    common->Printf("PS4 TEST NEW GAME INTRO guis/intro.gui\n");
++}
++#endif
 diff --git a/neo/game/Game_local.cpp b/neo/game/Game_local.cpp
-index 949e9ae..3efbbb1 100644
+index 949e9ae..912662e 100644
 --- a/neo/game/Game_local.cpp
 +++ b/neo/game/Game_local.cpp
 @@ -2465,6 +2465,14 @@ gameReturn_t idGameLocal::RunFrame( const usercmd_t *clientCmds ) {
  		skipCinematic = false;
  	}
-
+ 
 +#ifdef __PS4__
 +    if(player && (framenum % 30)==0) {
 +        const idVec3 &pos=player->GetPhysics()->GetOrigin();
 +        const usercmd_t &input=clientCmds[localClientNum];
-+        common->Printf("PS4 GAME tick=%d pos=%.2f,%.2f,%.2f yaw=%.2f buttons=%u move=%d,%d health=%d\n",
-+            framenum,pos.x,pos.y,pos.z,player->viewAngles.yaw,input.buttons,input.forwardmove,input.rightmove,player->health);
++        common->Printf("PS4 GAME tick=%d pos=%.2f,%.2f,%.2f yaw=%.2f buttons=%u move=%d,%d health=%d cinematic=%d\n",
++            framenum,pos.x,pos.y,pos.z,player->viewAngles.yaw,input.buttons,input.forwardmove,input.rightmove,player->health,int(inCinematic));
 +    }
 +#endif
  	// show any debug info for this frame
@@ -294,22 +311,22 @@ index 79b0aa8..538223c 100644
 --- a/neo/idlib/Str.h
 +++ b/neo/idlib/Str.h
 @@ -28,6 +28,10 @@ If you have questions concerning this license or the applicable additional terms
-
+ 
  #ifndef __STR_H__
  #define __STR_H__
 +#ifdef __PS4__
 +#include <cstring>
 +#include <cstdio>
 +#endif
-
+ 
  #include "idlib/CmdArgs.h"
-
+ 
 diff --git a/neo/libs/nrd/Source/Timer.cpp b/neo/libs/nrd/Source/Timer.cpp
 index 91120ed..5a52da6 100644
 --- a/neo/libs/nrd/Source/Timer.cpp
 +++ b/neo/libs/nrd/Source/Timer.cpp
 @@ -4,7 +4,7 @@
-
+ 
  #if defined(_WIN32)
  #    include <windows.h>
 -#elif defined(__linux__) || defined(__SCE__) || defined(__APPLE__)
@@ -328,13 +345,13 @@ index 91120ed..5a52da6 100644
      return uint64_t(spec.tv_sec) * 1000000000ull + spec.tv_nsec;
 @@ -36,7 +36,7 @@ nrd::Timer::Timer() {
      QueryPerformanceFrequency((LARGE_INTEGER*)&ticksPerSecond);
-
+ 
      m_InvTicksPerMs = 1000.0 / ticksPerSecond;
 -#elif defined(__linux__) || defined(__SCE__) || defined(__APPLE__)
 +#elif defined(__linux__) || defined(__PS4__) || defined(__SCE__) || defined(__APPLE__)
      m_InvTicksPerMs = 1.0 / 1000000.0;
  #endif
-
+ 
 diff --git a/neo/renderer/Model_md3.cpp b/neo/renderer/Model_md3.cpp
 index 1d6f481..28a7dab 100644
 --- a/neo/renderer/Model_md3.cpp
@@ -342,29 +359,30 @@ index 1d6f481..28a7dab 100644
 @@ -58,7 +58,7 @@ idRenderModelMD3::~idRenderModelMD3() {
  		R_FreeStaticTriSurfSilIndexes( &tri );
  		R_FreeStaticTriSurfSilEdges( &tri );
-
+ 
 -		if ( sizeof(md3Triangle_t::indexes[0]) != sizeof(silInfo.indexes[0]) ) {
 +		if ( sizeof(((md3Triangle_t *)0)->indexes[0]) != sizeof(silInfo.indexes[0]) ) {
  			tri.indexes = silInfo.indexes;
  			R_FreeStaticTriSurfIndexes( &tri );
  		} // else silInfos[i].indexes points directly into the corresponding data in this->md3
 diff --git a/neo/renderer/rhi/vk/VulkanBackend.cpp b/neo/renderer/rhi/vk/VulkanBackend.cpp
-index 3eaad02..84e12d1 100644
+index 3eaad02..ba9ba1a 100644
 --- a/neo/renderer/rhi/vk/VulkanBackend.cpp
 +++ b/neo/renderer/rhi/vk/VulkanBackend.cpp
-@@ -33,6 +33,11 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
+@@ -33,6 +33,12 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
  #endif
-
+ 
  #include <vulkan/vulkan.h>
 +#ifdef __PS4__
++#include "video_upload.h"
 +#define DUDE_VK_API_BASELINE VK_API_VERSION_1_1
 +#else
 +#define DUDE_VK_API_BASELINE VK_API_VERSION_1_4
 +#endif
-
+ 
  #ifdef DUDE_HAVE_SHADERC
  // runtime GLSL->SPIR-V for custom (mod) ARB material stages (CreateShaderFromGlsl)
-@@ -42,6 +47,9 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
+@@ -42,6 +48,9 @@ Doom 3 GPL Source Code (see ArbProgram.h for license header)
  // VMA implementation lives in this TU (header-only, vendored at libs/vma/).
  // We link the real loader and compile with prototypes, so VMA can call the
  // API statically. The pragmas keep its (vendored) warnings out of our build.
@@ -374,17 +392,17 @@ index 3eaad02..84e12d1 100644
  #define VMA_STATIC_VULKAN_FUNCTIONS 1
  #define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
  #define VMA_IMPLEMENTATION
-@@ -142,6 +150,9 @@ static idCVar r_vkBdaZfill( "r_vkBdaZfill", "0", CVAR_RENDERER | CVAR_INTEGER,
+@@ -142,6 +151,9 @@ static idCVar r_vkBdaZfill( "r_vkBdaZfill", "0", CVAR_RENDERER | CVAR_INTEGER,
  static idCVar r_vkBdaVerbose( "r_vkBdaVerbose", "0", CVAR_RENDERER | CVAR_BOOL,
  	"Vulkan backend: print the r_vkBdaZfill firing counter once/sec (per-draw / batched / fell-back) to confirm the BDA z-fill path is live. Diagnostic only, off by default so enabling the offload doesn't chatter to the console." );
-
+ 
 +#ifdef __PS4__
 +#include "present.h"
 +#endif
  namespace rhi {
-
+ 
  // Forward declarations for the crash-dump helpers implemented later in this TU.
-@@ -1387,7 +1398,11 @@ VulkanBackend::CreateInstance
+@@ -1387,7 +1399,11 @@ VulkanBackend::CreateInstance
  */
  bool VulkanBackend::CreateInstance() {
  	SDL_Window *win = (SDL_Window *)GLimp_GetSDLWindow();
@@ -397,7 +415,7 @@ index 3eaad02..84e12d1 100644
  		common->Warning( "VK: no SDL window - GLimp_Init must run first" );
  		return false;
  	}
-@@ -1397,7 +1412,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1397,7 +1413,7 @@ bool VulkanBackend::CreateInstance() {
  	// backend targets a single 1.4 baseline rather than juggling older versions.
  	uint32_t instVersion = VK_API_VERSION_1_0;
  	vkEnumerateInstanceVersion( &instVersion );
@@ -406,8 +424,8 @@ index 3eaad02..84e12d1 100644
  		common->Warning( "VK: loader only supports Vulkan %u.%u (baseline is 1.4) - update your Vulkan runtime/drivers",
  			VK_API_VERSION_MAJOR( instVersion ), VK_API_VERSION_MINOR( instVersion ) );
  		return false;
-@@ -1405,7 +1420,9 @@ bool VulkanBackend::CreateInstance() {
-
+@@ -1405,7 +1421,9 @@ bool VulkanBackend::CreateInstance() {
+ 
  	// surface extensions from SDL
  	std::vector<const char *> exts;
 -#if SDL_VERSION_ATLEAST(3, 0, 0)
@@ -417,44 +435,44 @@ index 3eaad02..84e12d1 100644
  	{
  		Uint32 extCount = 0;
  		const char * const * sdlExts = SDL_Vulkan_GetInstanceExtensions( &extCount );
-@@ -1455,7 +1472,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1455,7 +1473,7 @@ bool VulkanBackend::CreateInstance() {
  	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
  	app.pApplicationName = "DUDE";
  	app.pEngineName = "DUDE";
 -	app.apiVersion = VK_API_VERSION_1_4;
 +	app.apiVersion = DUDE_VK_API_BASELINE;
-
+ 
  	VkInstanceCreateInfo ici = {};
  	ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-@@ -1492,6 +1509,7 @@ bool VulkanBackend::CreateInstance() {
+@@ -1492,6 +1510,7 @@ bool VulkanBackend::CreateInstance() {
  		VK_API_VERSION_PATCH( instVersion ),
  		haveValidation ? "ON" : "off" );
-
+ 
 +#ifndef __PS4__
  	// surface
  #if SDL_VERSION_ATLEAST(3, 0, 0)
  	if ( !SDL_Vulkan_CreateSurface( win, instance, NULL, &surface ) ) {
-@@ -1502,6 +1520,10 @@ bool VulkanBackend::CreateInstance() {
+@@ -1502,6 +1521,10 @@ bool VulkanBackend::CreateInstance() {
  		return false;
  	}
-
+ 
 +#else
 +    surface=VK_NULL_HANDLE; // Native VideoOut swapchain has no SDL surface.
 +#endif
 +
  	return true;
  }
-
-@@ -1539,7 +1561,7 @@ bool VulkanBackend::PickPhysicalDevice() {
+ 
+@@ -1539,7 +1562,7 @@ bool VulkanBackend::PickPhysicalDevice() {
  			VK_API_VERSION_MAJOR( props.apiVersion ), VK_API_VERSION_MINOR( props.apiVersion ),
  			VK_API_VERSION_PATCH( props.apiVersion ) );
-
+ 
 -		if ( props.apiVersion < VK_API_VERSION_1_4 ) {
 +		if ( props.apiVersion < DUDE_VK_API_BASELINE ) {
  			common->Printf( "VK:   skipped (needs Vulkan 1.4)\n" );
  			continue;
  		}
-@@ -1901,7 +1923,7 @@ bool VulkanBackend::CreateDeviceAndVma() {
+@@ -1901,7 +1924,7 @@ bool VulkanBackend::CreateDeviceAndVma() {
  	aci.physicalDevice = physical;
  	aci.device = device;
  	aci.instance = instance;
@@ -463,7 +481,7 @@ index 3eaad02..84e12d1 100644
  	// must match the enabled feature + the buffer usage bit (Phase 3.2b BDA); VMA needs this to
  	// pass VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT / the alloc flag through to buffer creation.
  	if ( haveBufferDeviceAddress ) {
-@@ -1919,6 +1941,9 @@ VulkanBackend::QueryDrawableSize
+@@ -1919,6 +1942,9 @@ VulkanBackend::QueryDrawableSize
  ====================
  */
  void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
@@ -473,7 +491,7 @@ index 3eaad02..84e12d1 100644
  	SDL_Window *win = (SDL_Window *)GLimp_GetSDLWindow();
  	w = h = 0;
  	if ( win == NULL ) {
-@@ -1927,7 +1952,11 @@ void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
+@@ -1927,7 +1953,11 @@ void VulkanBackend::QueryDrawableSize( int &w, int &h ) {
  #if SDL_VERSION_ATLEAST(3, 0, 0)
  	SDL_GetWindowSizeInPixels( win, &w, &h );
  #else
@@ -485,10 +503,10 @@ index 3eaad02..84e12d1 100644
 +#endif
  #endif
  }
-
-@@ -2127,7 +2156,11 @@ bool VulkanBackend::CreateSceneTargets() {
+ 
+@@ -2127,7 +2157,11 @@ bool VulkanBackend::CreateSceneTargets() {
  	}
-
+ 
  	// depth-stencil format: D24S8 where supported (NVIDIA), else D32S8 (AMD)
 +	#ifdef __PS4__
 +	sceneDepthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
@@ -498,7 +516,7 @@ index 3eaad02..84e12d1 100644
  	VkFormatProperties fp;
  	vkGetPhysicalDeviceFormatProperties( physical, sceneDepthFormat, &fp );
  	if ( ( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT ) == 0 ) {
-@@ -2272,6 +2305,9 @@ VulkanBackend::DestroySceneTargets
+@@ -2272,6 +2306,9 @@ VulkanBackend::DestroySceneTargets
  ====================
  */
  void VulkanBackend::DestroySceneTargets() {
@@ -508,7 +526,7 @@ index 3eaad02..84e12d1 100644
  	if ( sceneFb )         { vkDestroyFramebuffer( device, sceneFb, NULL ); sceneFb = VK_NULL_HANDLE; }
  	if ( passClear )       { vkDestroyRenderPass( device, passClear, NULL ); passClear = VK_NULL_HANDLE; }
  	if ( passLoad )        { vkDestroyRenderPass( device, passLoad, NULL ); passLoad = VK_NULL_HANDLE; }
-@@ -3091,7 +3127,10 @@ void VulkanBackend::EndFrame() {
+@@ -3091,7 +3128,10 @@ void VulkanBackend::EndFrame() {
  			gpuTimerBusy[frameIndex] = true;
  			gpuTimerActive = false;
  		}
@@ -520,7 +538,7 @@ index 3eaad02..84e12d1 100644
  		VkSubmitInfo si = {};
  		si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
  		si.commandBufferCount = 1;
-@@ -3142,10 +3181,15 @@ void VulkanBackend::EndFrame() {
+@@ -3142,10 +3182,15 @@ void VulkanBackend::EndFrame() {
  	blit.dstOffsets[1].x = (int32_t)swapExtent.width;
  	blit.dstOffsets[1].y = (int32_t)swapExtent.height;
  	blit.dstOffsets[1].z = 1;
@@ -533,38 +551,38 @@ index 3eaad02..84e12d1 100644
  		sceneExtent.width == swapExtent.width && sceneExtent.height == swapExtent.height
  			? VK_FILTER_NEAREST : VK_FILTER_LINEAR );
 +#endif
-
+ 
  	// M6: ImGui draws into the swapchain image after the blit, through a
  	// LOAD render pass whose finalLayout is PRESENT (screenshots read the
-@@ -3212,7 +3256,10 @@ void VulkanBackend::EndFrame() {
+@@ -3212,7 +3257,10 @@ void VulkanBackend::EndFrame() {
  		gpuTimerActive = false;
  	}
-
+ 
 -	vkEndCommandBuffer( f.cb );
 +	if ( !vkCheck( vkEndCommandBuffer( f.cb ), "vkEndCommandBuffer(frame)" ) ) {
 +            common->FatalError("Vulkan frame recording failed; command buffer was not submitted");
 +            return;
 +        }
-
+ 
  	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
  	VkSubmitInfo si = {};
-@@ -3461,6 +3508,7 @@ bool VulkanBackend::CreateM2Resources() {
+@@ -3461,6 +3509,7 @@ bool VulkanBackend::CreateM2Resources() {
  		}
  	}
-
+ 
 +#ifndef __PS4__
  	// compute lane (docs/gpu-offload-plan.md Phase 1): one set of 8 STORAGE_BUFFER bindings
  	// (ComputeArgs::storage[]) + a 128-byte push-constant range for params, a dedicated
  	// pipeline layout, and a FREE-able pool for per-dispatch sets. All COMPUTE-stage, kept
-@@ -3505,6 +3553,7 @@ bool VulkanBackend::CreateM2Resources() {
+@@ -3505,6 +3554,7 @@ bool VulkanBackend::CreateM2Resources() {
  		}
  	}
-
+ 
 +#endif
  	// per-slot set 0, pointing at that slot's UBO ring (persistent pool)
  	{
  		VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, FRAMES_IN_FLIGHT };
-@@ -8625,6 +8674,7 @@ Contents are undefined until the first CopyFramebufferToImage.
+@@ -8625,6 +8675,7 @@ Contents are undefined until the first CopyFramebufferToImage.
  ====================
  */
  ImageHandle VulkanBackend::CreateCaptureImage( int w, int h, bool depth, bool hdrFloat ) {
@@ -572,7 +590,40 @@ index 3eaad02..84e12d1 100644
  	if ( device == VK_NULL_HANDLE || w <= 0 || h <= 0 ) {
  		return 0;
  	}
-@@ -9035,6 +9085,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
+@@ -8877,7 +8928,18 @@ void VulkanBackend::UpdateTexture2D( ImageHandle dst, int w, int h, const void *
+ 		return;		// size changes recreate the image (caller's contract)
+ 	}
+ 
+-	const int bytes = w * h * 4;
++	int bytes = w * h * 4;
++#ifdef __PS4__
++    std::vector<byte> packedVideo;
++    bool tiledVideo = false;
++    const size_t packedBytes = doom3_ps4_pack_video(rec.image,w,h,NULL,NULL,0);
++    if (packedBytes) {
++        packedVideo.resize(packedBytes);
++        if (doom3_ps4_pack_video(rec.image,w,h,pixels,packedVideo.data(),packedBytes)) {
++            pixels = packedVideo.data(); bytes = (int)packedBytes; tiledVideo = true;
++        }
++    }
++#endif
+ 	BufferHandle stagingHandle = 0;
+ 	int stagingOfs = AllocFromRing( stagingRing[frameIndex], pixels, bytes, 16, 0, &stagingHandle );
+ 	VkBuffer staging = LookupBuffer( stagingHandle );
+@@ -8912,7 +8974,11 @@ void VulkanBackend::UpdateTexture2D( ImageHandle dst, int w, int h, const void *
+ 	c.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+ 	c.imageSubresource.layerCount = 1;
+ 	c.imageExtent = { (uint32_t)w, (uint32_t)h, 1 };
+-	vkCmdCopyBufferToImage( cb, staging, rec.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c );
++#ifdef __PS4__
++    if (tiledVideo) doom3_ps4_copy_video(cb,staging,(VkDeviceSize)stagingOfs,rec.image);
++    else
++#endif
++    vkCmdCopyBufferToImage( cb, staging, rec.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c );
+ 
+ 	VkImageMemoryBarrier toRead = toDst;
+ 	toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+@@ -9035,6 +9101,9 @@ Sampler is clamp-to-edge — the only mode that makes sense on a cube.
  */
  ImageHandle VulkanBackend::CreateTextureCube( int size, const void * const pics[6],
                                                int textureFilter, bool allowMips ) {
@@ -582,7 +633,7 @@ index 3eaad02..84e12d1 100644
  	if ( device == VK_NULL_HANDLE || size <= 0 || pics == NULL || uploadCb == VK_NULL_HANDLE ) {
  		return 0;
  	}
-@@ -11242,8 +11295,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
+@@ -11242,8 +11311,12 @@ void VulkanBackend::DrawIndexedIndirect( const DrawArgs &args, BufferHandle args
  			return;
  		}
  		// GPU-written count form (Phase 3 cull output): draw min(*count, drawCount) commands
@@ -595,27 +646,105 @@ index 3eaad02..84e12d1 100644
  	} else {
  		vkCmdDrawIndexedIndirect( cb, ab, (VkDeviceSize)argsOffset, (uint32_t)drawCount, (uint32_t)stride );
  	}
-@@ -11927,7 +11984,7 @@ bool VulkanBackend::ImGuiInit() {
+@@ -11927,7 +12000,7 @@ bool VulkanBackend::ImGuiInit() {
  	}
-
+ 
  	ImGui_ImplVulkan_InitInfo ii = {};
 -	ii.ApiVersion = VK_API_VERSION_1_4;
 +	ii.ApiVersion = DUDE_VK_API_BASELINE;
  	ii.Instance = instance;
  	ii.PhysicalDevice = physical;
  	ii.Device = device;
+diff --git a/neo/sound/snd_system.cpp b/neo/sound/snd_system.cpp
+index ee9fe9f..342a78d 100644
+--- a/neo/sound/snd_system.cpp
++++ b/neo/sound/snd_system.cpp
+@@ -97,7 +97,10 @@ bool idSoundSystemLocal::alOutputModeAvailable = false;
+ idSoundSystemLocal	soundSystemLocal;
+ idSoundSystem	*soundSystem  = &soundSystemLocal;
+ 
+-enum { D3_ALC_ATTRLIST_LEN = 6 }; // currently we set at most two setting-pairs + terminating 0, 0
++#ifdef __PS4__
++#include "audio.h"
++#endif
++enum { D3_ALC_ATTRLIST_LEN = 12 }; // currently we set at most two setting-pairs + terminating 0, 0
+ 
+ static ALCint cvarToAlcBoolish( const idCVar& cvar )
+ {
+@@ -110,6 +113,11 @@ static ALCint cvarToAlcBoolish( const idCVar& cvar )
+ static void SetAlcAttrList( ALCint attrList[D3_ALC_ATTRLIST_LEN] )
+ {
+ 	int idx = 0;
++#ifdef __PS4__
++	attrList[idx++] = ALC_FREQUENCY; attrList[idx++] = 48000;
++	attrList[idx++] = ALC_FORMAT_CHANNELS_SOFT; attrList[idx++] = ALC_STEREO_SOFT;
++	attrList[idx++] = ALC_FORMAT_TYPE_SOFT; attrList[idx++] = ALC_FLOAT_SOFT;
++#endif
+ 	// ALC_HRTF_SOFT, ALC_TRUE            // or ALC_FALSE or ALC_DONT_CARE_SOFT
+ 	if ( idSoundSystemLocal::alHRTFavailable ) {
+ 		attrList[idx++] = ALC_HRTF_SOFT;
+@@ -412,12 +420,16 @@ void idSoundSystemLocal::Init() {
+ 			}
+ 		}
+ 
++		#ifdef __PS4__
++		openalDevice = ps4::openAudioDevice();
++		#else
+ 		openalDevice = alcOpenDevice(device);
+ 		if ( !openalDevice && device ) {
+ 			common->Printf( "OpenAL: failed to open device '%s' (0x%x), trying default...\n", device, alGetError() );
+ 			openalDevice = alcOpenDevice( NULL );
+ 		}
+ 
++		#endif
+ 		// DG: handle the possibility that opening the default device or creating context failed
+ 		if ( openalDevice == NULL ) {
+ 			common->Printf( "OpenAL: failed to open default device (0x%x), disabling sound\n", alGetError() );
+@@ -592,6 +604,9 @@ void idSoundSystemLocal::Shutdown() {
+ 	delete soundCache;
+ 	soundCache = NULL;
+ 
++	#ifdef __PS4__
++	ps4::stopAudioOutput();
++	#endif
+ 	// destroy openal device and context
+ 	alcMakeContextCurrent( NULL );
+ 
+@@ -624,6 +639,12 @@ bool idSoundSystemLocal::InitHW() {
+ 		return false;
+ 	}
+ 
++	#ifdef __PS4__
++	if (!ps4::startAudioOutput(openalDevice)) {
++		common->Warning("PS4 AudioOut startup failed");
++		return false;
++	}
++	#endif
+ 	// put the real number in there
+ 	s_numberOfSpeakers.SetInteger(numSpeakers);
+ 
+@@ -646,6 +667,9 @@ bool idSoundSystemLocal::ShutdownHW() {
+ 	shutdown = true;		// don't do anything at AsyncUpdate() time
+ 	Sys_Sleep( 100 );		// sleep long enough to make sure any async sound talking to hardware has returned
+ 
++	#ifdef __PS4__
++	ps4::stopAudioOutput();
++	#endif
+ 	common->Printf( "Shutting down sound hardware\n" );
+ 
+ 	isInitialized = false;
 diff --git a/neo/sys/events.cpp b/neo/sys/events.cpp
 index 5965972..bac5516 100644
 --- a/neo/sys/events.cpp
 +++ b/neo/sys/events.cpp
 @@ -239,6 +239,9 @@ static bool buttonStates[K_LAST_KEY];
  static float joyAxis[MAX_JOYSTICK_AXIS];
-
+ 
  static idList<sysEvent_t> event_overflow;
 +#ifdef __PS4__
 +#include "input.inc"
 +#endif
-
+ 
  struct scancodename_t {
  	int sdlScancode;
 @@ -996,6 +999,9 @@ Sys_ShutdownInput
@@ -637,7 +766,7 @@ index 5965972..bac5516 100644
 +    return;
 +#endif
  	D3P_ScopedCPUSample(Sys_GenerateEvents);
-
+ 
  	handleMouseGrab();
 diff --git a/neo/sys/glimp.cpp b/neo/sys/glimp.cpp
 index b0ab349..ef85bc5 100644
@@ -652,10 +781,10 @@ index b0ab349..ef85bc5 100644
 +#endif
  #if SDL_VERSION_ATLEAST(2, 0, 0)
  	assert( SDL_WasInit( SDL_INIT_VIDEO ) );
-
+ 
 @@ -293,6 +296,14 @@ GLimp_Init
  static bool windowIsVulkan = false;
-
+ 
  bool GLimp_Init(glimpParms_t parms) {
 +#ifdef __PS4__
 +    windowIsVulkan=true;
@@ -666,11 +795,11 @@ index b0ab349..ef85bc5 100644
 +    return true;
 +#endif
  	common->Printf("Initializing OpenGL subsystem\n");
-
+ 
  	assert(SDL_WasInit(SDL_INIT_VIDEO));
 @@ -1495,6 +1506,9 @@ GLExtension_t GLimp_ExtensionPointer(const char *name) {
  }
-
+ 
  void GLimp_GrabInput(int flags) {
 +#ifdef __PS4__
 +    return; // Native VideoOut/ScePad has no SDL window to grab.
@@ -679,11 +808,11 @@ index b0ab349..ef85bc5 100644
  		common->Warning("GLimp_GrabInput called without window");
  		return;
 diff --git a/neo/sys/linux/main.cpp b/neo/sys/linux/main.cpp
-index 3d995cd..65560f5 100644
+index 3d995cd..b8f6569 100644
 --- a/neo/sys/linux/main.cpp
 +++ b/neo/sys/linux/main.cpp
 @@ -88,6 +88,9 @@ const char* Posix_GetSavePath()
-
+ 
  static void SetSavePath()
  {
 +#ifdef __PS4__
@@ -695,16 +824,16 @@ index 3d995cd..65560f5 100644
 @@ -104,7 +107,9 @@ static void SetExecutablePath(char* exePath)
  {
  	// !!! this assumes that exePath can hold PATH_MAX chars !!!
-
+ 
 -#ifdef _WIN32
 +#ifdef __PS4__
 +	D3_snprintfC99(exePath, PATH_MAX, "/app0/eboot.bin");
 +#elif defined(_WIN32)
  	WCHAR wexePath[PATH_MAX];
  	DWORD len;
-
+ 
 @@ -279,6 +284,12 @@ bool Sys_GetPath(sysPath_t type, idStr &path) {
-
+ 
  	switch(type) {
  	case PATH_BASE:
 +		#ifdef __PS4__
@@ -718,7 +847,7 @@ index 3d995cd..65560f5 100644
  			return true;
 @@ -333,6 +344,9 @@ bool Sys_GetPath(sysPath_t type, idStr &path) {
  		return false;
-
+ 
  	case PATH_CONFIG:
 +#ifdef __PS4__
 +    path="/data/doom3-client/config"; return true;
@@ -726,21 +855,23 @@ index 3d995cd..65560f5 100644
  	{
  		char legacy[MAX_OSPATH];
  		s = getenv("XDG_CONFIG_HOME");
-@@ -518,7 +532,29 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
+@@ -518,7 +532,31 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
  main
  ===============
  */
 +#ifdef __PS4__
 +#include "vk_ps4_log.h"
 +#include "storage.h"
++extern void PS4_TestNewGameIntro();
 +#endif
  int main(int argc, char **argv) {
 +#ifdef __PS4__
 +    vk_ps4_log_open("/data/client-vulkan.log");
++    vk_ps4_log("BUILD 0.14 graphics=0.12 video=cpu-tiled-staging audio=0.09 clock=orbis-monotonic");
 +    FILE *bundledMarker = fopen("/app0/doom3-bundled-data.txt", "rb");
 +    const bool bundledData = bundledMarker != nullptr;
 +    if (bundledMarker) fclose(bundledMarker);
-+    vk_ps4_log("DATA AUDIT 0.07 bundled=%d marker=fopen",int(bundledData));
++    vk_ps4_log("DATA AUDIT 0.14 bundled=%d marker=fopen",int(bundledData));
 +    const char *externalData = bundledData ? "/app0" : "/data/doom3-game";
 +    auto storage = ps4::resolveGameData(externalData, false);
 +    if (!bundledData && storage.status != ps4::StorageStatus::Ready)
@@ -756,14 +887,14 @@ index 3d995cd..65560f5 100644
  	// Prevent running Doom 3 as root
  	// Borrowed from Yamagi Quake II
  	if (getuid() == 0) {
-@@ -553,12 +589,52 @@ int main(int argc, char **argv) {
-
+@@ -553,12 +591,66 @@ int main(int argc, char **argv) {
+ 
  	Posix_InitSignalHandlers();
-
+ 
 +#ifdef __PS4__
 +    const char *clientArgs[]={"+set","fs_basepath",externalData,"+set","fs_cdpath","","+set","fs_devpath","","+set","r_graphicsAPI","vulkan","+set","r_mode","-1",
 +        "+set","r_customWidth","1280","+set","r_customHeight","720",
-+        "+set","s_noSound","1","+set","r_fullscreen","0","+set","r_hdr","0",
++        "+set","s_noSound","0","+set","com_asyncSound","0","+set","s_alHRTF","0","+set","r_fullscreen","0","+set","r_hdr","0",
 +        "+set","r_parallelImageLoad","0",
 +        "+set","image_useCompression","0","+set","image_usePrecompressedTextures","0"};
 +    common->Init(sizeof(clientArgs)/sizeof(clientArgs[0]),const_cast<char**>(clientArgs));
@@ -776,7 +907,7 @@ index 3d995cd..65560f5 100644
  	} else {
  		common->Init( 0, NULL );
  	}
-
+ 
 +#endif
 +	#ifdef DHEWM3_PS4_BRINGUP
 +	Sys_Printf("PASS PS4 client initialization\n");
@@ -792,9 +923,23 @@ index 3d995cd..65560f5 100644
 +        }
 +        fclose(control);
 +    }
++    if (frameLimit) {
++        control=fopen("/app0/doom3-test-new-game.txt","r");
++        if (control) { fclose(control); PS4_TestNewGameIntro(); }
++    }
 +    Sys_Printf("PS4 client loop: limit=%u (0=interactive)\n",frameLimit);
 +    for (unsigned frame=0;!frameLimit || frame<frameLimit;++frame) {
++        const int frameStart = Sys_Milliseconds();
 +        common->Frame();
++        static int reportStart = frameStart, reportFrames = 0, peakMs = 0;
++        const int elapsed = Sys_Milliseconds() - frameStart;
++        ++reportFrames;
++        if (elapsed > peakMs) peakMs = elapsed;
++        if (Sys_Milliseconds() - reportStart >= 5000) {
++            Sys_Printf("PS4 PERF frames=%d elapsedMs=%d peakMs=%d\n",
++                reportFrames, Sys_Milliseconds() - reportStart, peakMs);
++            reportStart = Sys_Milliseconds(); reportFrames = peakMs = 0;
++        }
 +        if(frame%60==0) Sys_Printf("PS4 client frame=%u\n",frame);
 +    }
 +    Sys_Printf("PASS PS4 client %u frames\n",frameLimit);
@@ -810,35 +955,49 @@ index 3d995cd..65560f5 100644
  		common->Frame();
  	}
 diff --git a/neo/sys/posix/posix_main.cpp b/neo/sys/posix/posix_main.cpp
-index 4f6484f..707cded 100644
+index 4f6484f..6942619 100644
 --- a/neo/sys/posix/posix_main.cpp
 +++ b/neo/sys/posix/posix_main.cpp
-@@ -597,7 +597,7 @@ void Sys_SleepUntilPrecise( double targetTimeMS ) {
+@@ -450,7 +450,12 @@ int Sys_GetDriveFreeSpace( const char *path ) {
+ #else
+   static struct timespec first;
+ 
+-  #ifdef _POSIX_MONOTONIC_CLOCK
++  #if defined(__PS4__)
++    // Native Orbis follows the FreeBSD clock ABI: 4 is monotonic wall time.
++    // OpenOrbis musl headers use Linux CLOCK_MONOTONIC=1, which is native
++    // CLOCK_VIRTUAL (CPU time). Init and every subsequent read must agree.
++    #define D3_GETTIME_CLOCK ((clockid_t)4)
++  #elif defined(_POSIX_MONOTONIC_CLOCK)
+     #define D3_GETTIME_CLOCK CLOCK_MONOTONIC
+   #else
+     #define D3_GETTIME_CLOCK CLOCK_REALTIME
+@@ -597,7 +602,7 @@ void Sys_SleepUntilPrecise( double targetTimeMS ) {
  static const int   crashSigs[]     = {  SIGILL,   SIGABRT,   SIGFPE,   SIGSEGV };
  static const char* crashSigNames[] = { "SIGILL", "SIGABRT", "SIGFPE", "SIGSEGV" };
-
+ 
 -#if ( defined(__linux__) && defined(__GLIBC__) ) || defined(__FreeBSD__) || (defined(__APPLE__) && !defined(OSX_TIGER))
 +#if !defined(__PS4__) && (( defined(__linux__) && defined(__GLIBC__) ) || defined(__FreeBSD__) || (defined(__APPLE__) && !defined(OSX_TIGER)))
    #define D3_HAVE_BACKTRACE
    #include <execinfo.h>
  #endif
-@@ -814,6 +814,7 @@ void Posix_InitSignalHandlers( void )
+@@ -814,6 +819,7 @@ void Posix_InitSignalHandlers( void )
  	bt_state = backtrace_create_state(exePath[0] ? exePath : NULL, 0, bt_error_callback, NULL);
  #endif
-
+ 
 +	#ifndef __PS4__
  	for(int i=0; i<sizeof(crashSigs)/sizeof(crashSigs[0]); ++i)
  	{
  		installSigHandler(crashSigs[i], SA_RESTART|SA_RESETHAND, signalhandlerCrash);
-@@ -821,6 +822,7 @@ void Posix_InitSignalHandlers( void )
-
+@@ -821,6 +827,7 @@ void Posix_InitSignalHandlers( void )
+ 
  	installSigHandler(SIGTTIN, 0, signalhandlerConsoleStuff);
  	installSigHandler(SIGTTOU, 0, signalhandlerConsoleStuff);
 +	#endif
-
+ 
  	// this is also a good place to open dudelog.txt for Sys_VPrintf()
-
-@@ -1040,6 +1042,9 @@ Return NULL if a complete line is not ready.
+ 
+@@ -1040,6 +1047,9 @@ Return NULL if a complete line is not ready.
  ================
  */
  char *Sys_ConsoleInput( void ) {
@@ -866,7 +1025,7 @@ index 746a945..8ab35a6 100644
 +	#endif
  	unsigned int ip, mask;
  	struct ifaddrs *ifap, *ifp;
-
+ 
 @@ -341,12 +349,21 @@ static int IPSocket( const char *net_interface, int port, netadr_t *bound_to = N
  		return 0;
  	}

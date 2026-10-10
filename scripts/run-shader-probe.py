@@ -11,8 +11,8 @@ root = Path(__file__).resolve().parent.parent
 if not os.environ.get('DISPLAY'):
     raise SystemExit('Run under xvfb-run -a -s "-screen 0 1280x720x24"')
 mode = sys.argv[1] if len(sys.argv) > 1 else 'demote'
-if mode not in ('sampledpresent', 'depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
-    raise SystemExit('Use demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion')
+if mode not in ('videoupload', 'streaming', 'sampledpresent', 'depthregion', 'stencilcast', 'depthstencil', 'clear', 'demote', 'dynamic', 'present', 'generic', 'cube', 'ambient', 'shadow', 'texops', 'interaction', 'cubeshadow', 'interactionshadow', 'shadowcast', 'depthcopy'):
+    raise SystemExit('Use streaming, demote, dynamic, present, generic, cube, ambient, shadow, texops, interaction, interactionshadow, cubeshadow, shadowcast, depthcopy, clear, stencilcast, depthstencil or depthregion')
 profile = root / ('build/shader-probe-profile-'+mode)
 out = root / ('artifacts/shader-probe-'+mode)
 out.mkdir(parents=True, exist_ok=True)
@@ -76,6 +76,10 @@ with (out/'emulator.log').open('w') as log:
                     face = min(int((x+.5)*6/1280),5)
                     lit = y < 240 or (y < 480 and face%2 == 1)
                     expected = (0,255,0) if lit else (255,0,0)
+                elif mode == 'videoupload':
+                    expected = (255,0,0) if ((x*513//1280)+(y*509//720))%2 else (0,255,0)
+                elif mode == 'streaming':
+                    expected = (255,0,0) if (((x//16)%3)+((y//16)%3))%2 else (0,255,0)
                 elif mode == 'texops':
                     expected = (255,0,0) if (x//16)%2 else (0,255,0)
                 elif mode == 'shadow':

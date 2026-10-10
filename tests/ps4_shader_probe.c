@@ -28,6 +28,14 @@ static const float g_vertices[] = {
     -1, -1, 0,0,0, 3,-1,0,0,0, -1,3,0,0,0
 };
 #endif
+#ifdef PROBE_TILED_VIDEO
+#include "video_upload.h"
+#define VIDEO_W 513
+#define VIDEO_H 509
+#else
+#define VIDEO_W 3
+#define VIDEO_H 3
+#endif
 #define CHECK(call) do { VkResult result = (call); if (result != VK_SUCCESS) { \
     vk_ps4_log("FAIL %s: %d", #call, result); return 1; } } while (0)
 
@@ -500,6 +508,12 @@ int main(void) {
     image_ci.tiling = VK_IMAGE_TILING_LINEAR;
     image_ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
     image_ci.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+#ifdef PROBE_STREAMING_UPLOAD
+    image_ci.extent = (VkExtent3D){VIDEO_W,VIDEO_H,1};
+    image_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_ci.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+#endif
     CHECK(vkCreateImage(dev, &image_ci, NULL, &texture));
     VkMemoryRequirements texture_req;
     vkGetImageMemoryRequirements(dev, texture, &texture_req);
@@ -515,7 +529,9 @@ int main(void) {
 #else
     const unsigned char texels[] = {0,255,0,255, 255,0,0,0};
 #endif
+#ifndef PROBE_STREAMING_UPLOAD
     memcpy(pixels, texels, sizeof(texels));
+#endif
     vkUnmapMemory(dev, texture_memory);
     VkImageViewCreateInfo texture_vi = {0};
     texture_vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -537,6 +553,25 @@ int main(void) {
     sampler_ci.compareOp = VK_COMPARE_OP_LESS;
 #endif
     CHECK(vkCreateSampler(dev, &sampler_ci, NULL, &texture_sampler));
+#ifdef PROBE_STREAMING_UPLOAD
+    VkBuffer upload_buffer; VkDeviceMemory upload_memory;
+    VkBufferCreateInfo upload_ci = {0};
+    upload_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    upload_ci.size = VIDEO_W*VIDEO_H*4;
+#ifdef PROBE_TILED_VIDEO
+    upload_ci.size = doom3_ps4_pack_video(texture,VIDEO_W,VIDEO_H,NULL,NULL,0);
+    if (!upload_ci.size) return 1;
+#endif
+ upload_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    CHECK(vkCreateBuffer(dev, &upload_ci, NULL, &upload_buffer));
+    VkMemoryRequirements upload_req; vkGetBufferMemoryRequirements(dev, upload_buffer, &upload_req);
+    VkMemoryAllocateInfo upload_ai = {0}; upload_ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    upload_ai.allocationSize = upload_req.size;
+    CHECK(vkAllocateMemory(dev, &upload_ai, NULL, &upload_memory));
+    CHECK(vkBindBufferMemory(dev, upload_buffer, upload_memory, 0));
+    unsigned char *upload_pixels;
+    CHECK(vkMapMemory(dev, upload_memory, 0, VK_WHOLE_SIZE, 0, (void**)&upload_pixels));
+#endif
 #endif
 #ifdef PROBE_LIGHTING
     if (setup_lighting(dev, sets[1], &lighting)) return 1;
@@ -662,6 +697,44 @@ int main(void) {
 #ifdef PROBE_SHADOW_CAST
         draw_shadow_caster(cmd,lighting.images[7],&caster,frame);
 #endif
+#elif defined(PROBE_STREAMING_UPLOAD)
+        // The flight fence was waited above. Change source contents for every
+        // submission so the final pixel oracle also rejects stale uploads.
+        #ifdef PROBE_TILED_VIDEO
+        static unsigned char linear[VIDEO_W*VIDEO_H*4];
+        unsigned char *video_pixels = linear;
+#else
+        unsigned char *video_pixels = upload_pixels;
+#endif
+        for (int y=0; y<VIDEO_H; ++y) for (int x=0; x<VIDEO_W; ++x) {
+            int i=(y*VIDEO_W+x)*4; int red=(x+y)%2;
+            video_pixels[i]=frame ? red*255 : 0;
+            video_pixels[i+1]=frame ? (1-red)*255 : 0;
+            video_pixels[i+2]=frame ? 0 : 255; video_pixels[i+3]=255;
+        }
+        #ifdef PROBE_TILED_VIDEO
+        if (!doom3_ps4_pack_video(texture,VIDEO_W,VIDEO_H,linear,upload_pixels,upload_ci.size)) return 1;
+#endif
+        VkImageMemoryBarrier upload_barrier = {0};
+        upload_barrier.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        upload_barrier.srcAccessMask=frame ? VK_ACCESS_SHADER_READ_BIT : 0;
+        upload_barrier.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+        upload_barrier.oldLayout=frame ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        upload_barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        upload_barrier.srcQueueFamilyIndex=upload_barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        upload_barrier.image=texture; upload_barrier.subresourceRange=texture_vi.subresourceRange;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&upload_barrier);
+        VkBufferImageCopy upload_region={0};
+        upload_region.imageSubresource=(VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
+        upload_region.imageExtent=(VkExtent3D){VIDEO_W,VIDEO_H,1};
+#ifdef PROBE_TILED_VIDEO
+        doom3_ps4_copy_video(cmd,upload_buffer,0,texture);
+#else
+        vkCmdCopyBufferToImage(cmd,upload_buffer,texture,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&upload_region);
+#endif
+        upload_barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; upload_barrier.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
+        upload_barrier.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; upload_barrier.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&upload_barrier);
 #elif defined(PROBE_DUDE_GENERIC)
         if (!frame) {
             VkImageMemoryBarrier barrier = {0};
