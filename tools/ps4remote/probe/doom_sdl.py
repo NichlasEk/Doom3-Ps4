@@ -59,13 +59,25 @@ try:
     for sc,code in reversed(keys):key(sc,code,False)
    else:record['release_required']=['ctrl','alt','grave']
   time.sleep(.4)
+ def console_active():
+  offset=symbols['_ZN14idConsoleLocal6ActiveEv']
+  expected=bytes.fromhex('0fb64710c3')
+  if c.read(a.pid,base+offset,5)!=expected:raise ValueError('Console accessor layout mismatch')
+  return bool(c.read(a.pid,base+symbols['_ZL12localConsole']+16,1)[0])
+ def ensure_console(wanted):
+  if console_active()!=wanted:toggle()
+  deadline=time.monotonic()+3
+  while console_active()!=wanted:
+   if time.monotonic()>deadline:raise RuntimeError('Console did not reach requested state; command not retried')
+   time.sleep(.1)
  if a.command is not None:
-  toggle()
+  record['console_before']=console_active();save()
+  ensure_console(True)
   for i in range(0,len(a.command),31):
    e=bytearray(56);struct.pack_into('<I',e,0,0x303);chunk=a.command[i:i+31].encode();e[12:12+len(chunk)]=chunk;push(e)
   key(40,13,True)
   if a.command.strip()!='quit':
-   key(40,13,False);time.sleep(.5);toggle()
+   key(40,13,False);time.sleep(.5);ensure_console(False)
  elif selected:
   # Observe engine state, not just SDL queue acceptance. Layout verified from IsDown.
   isdown=symbols['_ZN10idKeyInput6IsDownEi']

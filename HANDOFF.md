@@ -1,3 +1,14 @@
+## 2026-10-10: source pushed, fresh map and gameplay measured
+
+Initial source/tool history pushed as 92d338b. Subsequent console-state fix
+reads actual open/closed status instead of blindly toggling. Fresh Mars City
+map start confirmed; arrival 17.175 FPS/29.810s, stationary playable hangar
+6.624 FPS/44.838s. Doom0.14/PID224 remains running there, cinematic=0, health100.
+First attempted map did not execute; its 9.948 FPS sample is excluded from
+fresh-game results. New load is warm: 2.272s engine phases. Earlier first load
+in same log:131.395s, including109s image loading. No cold-boot control yet.
+See [measurements and caveats](docs/GAMEPLAY-014-MEASUREMENTS.md).
+
 ## 2026-10-10: remote gameplay input and screenshots verified
 
 Doom 0.14/PID 224: remote SDL keyboard and mouse input now physically verified.

@@ -79,3 +79,7 @@ visual feedback, not a real-time video stream.
 Local validation: both scripts compile; 15 existing debugger/credential tests
 pass. Physical tests above verify the new keyboard/mouse movement and image
 path; the existing unit tests do not themselves cover SDL input.
+
+Follow-up: `--command` now reads and verifies the console's actual state,
+opens it only if necessary, and confirms closure. Blind toggling failed when
+the console was already open; see [the follow-up measurements](GAMEPLAY-014-MEASUREMENTS.md).
